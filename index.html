@@ -338,6 +338,7 @@ function normalize(d) {
   const s = Object.assign(structuredClone(DEFAULTS), d || {});
   s.tareas = Array.isArray(s.tareas) ? s.tareas : [];
   s.clinicas = Array.isArray(s.clinicas) ? s.clinicas : [];
+  if (!Array.isArray(s.tiposEnvio)) s.tiposEnvio = ['Dieta / pauta', 'Mail de seguimiento', 'Recetas', 'Menú semanal', 'Informe de seguimiento'];
   if (!Array.isArray(s.planes)) s.planes = [
     { nombre: 'Primera visita', sesiones: 1 }, { nombre: 'Bono 3 visitas', sesiones: 3 }, { nombre: 'Bono 5 visitas', sesiones: 5 },
     { nombre: 'Plan trimestral', sesiones: 6, meses: 3 }, { nombre: 'Seguimiento mensual', sesiones: 1, meses: 1 },
@@ -354,7 +355,7 @@ function normalize(d) {
   for (const p of s.patients) {
     p.visitas = p.visitas || []; p.hechos = p.hechos || {}; p.reglas = p.reglas || {};
     delete p.telefono; delete p.email;   // modo seudónimo: no se guardan datos de contacto
-    p.anotaciones = p.anotaciones || []; p.canal = p.canal || 'whatsapp'; p.ultimoMensaje = p.ultimoMensaje || '';
+    p.anotaciones = p.anotaciones || []; p.envios = p.envios || {}; p.canal = p.canal || 'whatsapp'; p.ultimoMensaje = p.ultimoMensaje || '';
     if (!p.reglas.seguimientoModo) p.reglas.seguimientoModo = p.reglas.seguimientoDias ? 'tras' : 'no';
     if (p.reglas.avisarSinProxima === undefined) p.reglas.avisarSinProxima = true;
     if (p.recordatorios) { for (const r of p.recordatorios) s.tareas.push({ ...r, pacienteId: p.id }); delete p.recordatorios; }
@@ -533,7 +534,20 @@ function okPrivacidad(...txts) {
   return !x || confirm(`Parece que has escrito ${x}. Para proteger los datos, no guardes nada que identifique al paciente.\n\n¿Guardar de todos modos?`);
 }
 
-const CANALES = { whatsapp: '💬 WhatsApp', email: '✉️ Email', llamada: '📞 Llamada', presencial: '🤝 En persona', nota: '📝 Nota' };
+const CANALES = { whatsapp: '💬 WhatsApp', email: '✉️ Email', llamada: '📞 Llamada', presencial: '🤝 En persona', envio: '📨 Envío', nota: '📝 Nota' };
+
+// Envíos (dieta, mails, materiales…): último envío y si queda pendiente
+function marcarEnviado(p, tipo, fecha = today()) {
+  const e = p.envios[tipo] = p.envios[tipo] || {};
+  e.ultimo = fecha; e.pendiente = '';
+  p.anotaciones.push({ id: uid(), fecha, canal: 'envio', texto: 'Enviado: ' + tipo });
+  if (/mail|mensaje/i.test(tipo) && fecha > (p.ultimoMensaje || '')) p.ultimoMensaje = fecha;
+}
+function marcarPendiente(p, tipo, on = true) {
+  const e = p.envios[tipo] = p.envios[tipo] || {};
+  e.pendiente = on ? (e.pendiente || today()) : '';
+}
+const tiposEnvioDe = p => [...new Set([...S.tiposEnvio, ...Object.keys(p.envios).filter(t => p.envios[t].ultimo || p.envios[t].pendiente)])];
 function camposReglas(r, canal) {
   const o = (val, l, cur) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${l}</option>`;
   const num = k => esc(r[k] ?? '');
@@ -632,6 +646,12 @@ function alertas() {
         detalle: `${p.servicio || 'Plan'} · fin ${fmt(p.fechaFinPlan)}` });
     }
   }
+  for (const p of S.patients) {
+    if (p.estado === 'alta' || !pasaClinica(p)) continue;
+    for (const [tipo, e] of Object.entries(p.envios)) if (e.pendiente)
+      out.push({ p, tipo: 'envio', envio: tipo, fecha: e.pendiente, titulo: 'Pendiente de enviar: ' + tipo,
+        detalle: `Marcado como pendiente el ${fmt(e.pendiente)}` + (e.ultimo ? ` · último envío: ${fmt(e.ultimo)}` : '') });
+  }
   for (const tarea of S.tareas) {
     if (tarea.hecho) continue;
     const p = tarea.pacienteId ? byId(tarea.pacienteId) : null;
@@ -645,7 +665,7 @@ function alertas() {
 function nuevoPaciente() {
   return { id: null, nombre: '', clinica: filtro.clinica && filtro.clinica !== '__sin' ? filtro.clinica : '', fechaAlta: today(), objetivo: '', servicio: '', sesionesContratadas: '',
     fechaInicio: today(), fechaFinPlan: '', importe: '', pago: 'pagado', estado: 'activo', notas: '', proximaVisita: '', horaVisita: '',
-    canal: S.canalDefecto || 'whatsapp', ultimoMensaje: '', anotaciones: [],
+    canal: S.canalDefecto || 'whatsapp', ultimoMensaje: '', anotaciones: [], envios: {},
     reglas: { ...S.reglasDefecto }, visitas: [], hechos: {} };
 }
 
@@ -704,7 +724,7 @@ function renderHoy() {
 function renderAlerta(a, cls) {
   const p = a.p;
   const tagMap = { seg: ['Mensaje', 'o'], inact: ['Inactividad', 'r'], registrar: ['Revisión', 'b'], cita: ['Revisión', 'b'],
-    bono: ['Plan', ''], fin: ['Plan', ''], tarea: ['Tarea', 'g'], sinprox: ['Agenda', 'b'] };
+    bono: ['Plan', ''], fin: ['Plan', ''], tarea: ['Tarea', 'g'], sinprox: ['Agenda', 'b'], envio: ['Envío', 'o'] };
   const [tag, tc] = tagMap[a.tipo];
   let acts = '';
   if (a.tipo === 'seg' || a.tipo === 'inact') {
@@ -717,6 +737,7 @@ function renderAlerta(a, cls) {
   if (a.tipo === 'registrar') acts += `<button class="primary" data-act="ficha" data-id="${p.id}" data-foco="fv">Registrar seguimiento</button>
     <button data-act="nocita" data-id="${p.id}">No vino</button>`;
   if (a.k && !['inact', 'sinprox'].includes(a.tipo)) acts += `<button data-act="hecho" data-id="${p.id}" data-k="${a.k}">✓ Hecho</button>`;
+  if (a.tipo === 'envio') acts += `<button class="primary" data-act="envhecho" data-id="${p.id}" data-env="${esc(a.envio)}">✓ Enviado</button>`;
   if (a.tarea) acts += `<button data-act="tareahecha" data-tid="${a.tarea.id}">✓ Hecho</button>`;
   if (p) acts += `<button data-act="ficha" data-id="${p.id}">Ficha</button>`;
   return `<div class="card alert ${cls}">
@@ -901,11 +922,23 @@ function renderFicha(id) {
     <label class="full">Objetivo general<input name="objetivo" value="${v('objetivo')}" placeholder="Ej. mejorar hábitos de desayuno, rendimiento deportivo…"></label>
 
     <div class="fieldset">Plan contratado</div>
-    <label>Plan<select name="servicio">
+    <label>Plan<select name="servicio" data-orig="${v('servicio')}">
       <option value="">— Sin plan —</option>
       ${S.planes.map(x => `<option value="${esc(x.nombre)}" ${p.servicio === x.nombre ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}
       ${p.servicio && !planPorNombre(p.servicio) ? `<option value="${v('servicio')}" selected>${v('servicio')}</option>` : ''}
+      <option value="__nuevo">➕ Nuevo plan…</option>
     </select></label>
+    <div id="planRapido" class="full card" hidden style="background:var(--teal-bg);margin:0">
+      <b>Nuevo plan</b> <span class="hint">· se guardará también en Ajustes → Planes y servicios</span>
+      <div class="grid" style="margin-top:8px">
+        <label class="full">Nombre del plan<input id="pr-nombre" placeholder="Ej. Plan cirugía 6 meses"></label>
+        <label>Nº de sesiones<input id="pr-sesiones" type="number" min="0" placeholder="vacío = sin límite"></label>
+        <label>Duración (meses)<input id="pr-meses" type="number" min="0" placeholder="vacío = sin caducidad"></label>
+        <label>Importe<input id="pr-importe" placeholder="Ej. 180 €"></label>
+        <label>Ver al paciente cada … días<input id="pr-frecuencia" type="number" min="1" placeholder="opcional"></label>
+        <div class="full row"><button type="button" class="primary" data-act="planrapido">Crear y asignar</button><button type="button" data-act="planrapidocancel">Cancelar</button></div>
+      </div>
+    </div>
     <label>Nº de sesiones incluidas<input name="sesionesContratadas" type="number" min="0" value="${v('sesionesContratadas')}" placeholder="vacío = sin límite"></label>
     <label>Inicio del plan<input name="fechaInicio" type="date" value="${v('fechaInicio')}"></label>
     <label>Fin / caducidad del plan<input name="fechaFinPlan" type="date" value="${v('fechaFinPlan')}"></label>
@@ -929,6 +962,16 @@ function renderFicha(id) {
 `;
   if (isNew) return h;
 
+  h += `<div class="card"><b>Envíos</b>
+    <div class="hint">Dieta, mails, materiales… Marca lo que tienes pendiente de enviar (te avisará en Hoy) y lo que ya has enviado.</div>
+    ${tiposEnvioDe(p).map(t => { const e = p.envios[t] || {}; return `<div class="item">
+      <div class="txt"><b>${esc(t)}</b> ${e.pendiente ? '<span class="tag o">pendiente</span>' : e.ultimo ? '<span class="tag">enviado</span>' : ''}
+        <div class="hint">${e.ultimo ? `Último envío: ${fmt(e.ultimo)} (${relativo(e.ultimo)})` : 'Aún no enviado'}</div></div>
+      <button class="primary" data-act="envhecho" data-id="${p.id}" data-env="${esc(t)}">✓ Enviado hoy</button>
+      <button data-act="envpend" data-id="${p.id}" data-env="${esc(t)}">${e.pendiente ? 'Quitar pendiente' : '⏳ Pendiente'}</button></div>`; }).join('')}
+    <div class="hint" style="margin-top:8px">Los tipos de envío se configuran en <b>Ajustes → Tipos de envío</b>.</div>
+  </div>`;
+
   const vs = visitasOrd(p).reverse();
   const fechaDef = p.proximaVisita && p.proximaVisita <= today() ? p.proximaVisita : today();
   const proxDef = p.reglas.frecuenciaDias ? addDays(fechaDef, p.reglas.frecuenciaDias) : '';
@@ -945,6 +988,8 @@ function renderFicha(id) {
       <label>Próxima visita${proxDef ? ` <span class="hint">(cada ${p.reglas.frecuenciaDias} días)</span>` : ''}<input name="proxima" type="date" value="${proxDef}"></label>
       <label>Hora<input name="hora" type="time"></label>
       <label style="display:flex;gap:6px;align-items:center;color:var(--ink);align-self:end;padding-bottom:9px"><input type="checkbox" name="cuenta" checked style="width:auto"> Descuenta del plan</label>
+      ${S.tiposEnvio.length ? `<div class="full"><span class="hint">Después de esta visita queda pendiente enviar (opcional):</span>
+        <div class="row" style="margin-top:4px">${S.tiposEnvio.map(t => `<label class="check" style="padding:0"><input type="checkbox" name="pend" value="${esc(t)}"> ${esc(t)}</label>`).join('')}</div></div>` : ''}
       <div class="full"><button class="primary">Guardar seguimiento</button></div>
     </form>
     ${vs.length ? vs.map(x => `<div class="visit"><div class="d">${fmt(x.fecha)}<div class="hint">${esc(x.tipo)}${x.cuenta === false ? ' · no cuenta' : ''}</div></div>
@@ -1040,6 +1085,17 @@ function renderAjustes() {
   </div>
 
   <div class="card">
+    <b>Tipos de envío</b>
+    <p class="hint">Lo que sueles enviar a los pacientes. Aparecen en el apartado «Envíos» de cada ficha y al registrar un seguimiento.</p>
+    ${S.tiposEnvio.map(t => `<div class="item"><div class="txt">${esc(t)}</div>
+      <button class="link danger" data-act="delenvio" data-env="${esc(t)}" title="Quitar">✕</button></div>`).join('') || '<div class="hint">Aún no hay tipos de envío.</div>'}
+    <form id="fenv" class="row" style="margin-top:12px">
+      <input name="nombre" placeholder="Ej. Lista de la compra, Pauta de suplementos…" required style="flex:1;min-width:200px">
+      <button class="primary">Añadir</button>
+    </form>
+  </div>
+
+  <div class="card">
     <b>Clínicas y centros</b>
     <p class="hint">Se usan para clasificar pacientes y filtrar Hoy, Pacientes y Agenda. También puedes escribir una nueva directamente en la ficha del paciente.</p>
     ${clinicasTodas().map(c => { const n = S.patients.filter(p => p.clinica === c).length; return `<div class="item">
@@ -1110,6 +1166,8 @@ document.addEventListener('click', async e => {
       p.ultimoMensaje = today();
       if (el.dataset.k) p.hechos[el.dataset.k] = today();
       p.anotaciones.push({ id: uid(), fecha: today(), canal, texto: el.dataset.tipo === 'inact' ? 'Mensaje para retomar el seguimiento' : 'Mensaje de seguimiento' });
+      const tm = S.tiposEnvio.find(t => /mail/i.test(t));
+      if (canal === 'email' && tm) { const e = p.envios[tm] = p.envios[tm] || {}; e.ultimo = today(); e.pendiente = ''; }
       save(); toast(`Anotado: mensaje enviado por ${CANALES[canal].slice(2).trim()}`); break;
     }
     case 'programar': {
@@ -1127,6 +1185,33 @@ document.addEventListener('click', async e => {
     case 'calmov': { const [y, m] = calMes.split('-').map(Number); const d = new Date(y, m - 1 + Number(el.dataset.n), 1); calMes = iso(d).slice(0, 7); calDia = calMes === today().slice(0, 7) ? today() : iso(d); render(); break; }
     case 'calhoy': calMes = today().slice(0, 7); calDia = today(); render(); break;
     case 'caldia': calDia = el.dataset.f; if (calDia.slice(0, 7) !== calMes) calMes = calDia.slice(0, 7); render(); break;
+    case 'envhecho': marcarEnviado(p, el.dataset.env); save(); toast(`Anotado: ${el.dataset.env} enviado`); break;
+    case 'envpend': { const on = !(p.envios[el.dataset.env] || {}).pendiente; marcarPendiente(p, el.dataset.env, on); save(); toast(on ? 'Marcado como pendiente: aparecerá en Hoy' : 'Ya no está pendiente'); break; }
+    case 'delenvio': {
+      const t = el.dataset.env;
+      if (confirm(`¿Quitar «${t}» de los tipos de envío? El historial de los pacientes no se borra.`)) { S.tiposEnvio = S.tiposEnvio.filter(x => x !== t); save(); }
+      break;
+    }
+    case 'planrapido': {
+      const val = id => document.getElementById(id).value.trim();
+      const nombre = val('pr-nombre');
+      if (!nombre) { toast('Escribe el nombre del plan'); document.getElementById('pr-nombre').focus(); return; }
+      if (planPorNombre(nombre)) return toast('Ya existe un plan con ese nombre: elígelo en el desplegable');
+      const plan = { id: uid(), nombre, sesiones: numOrNull(val('pr-sesiones')), meses: numOrNull(val('pr-meses')), importe: val('pr-importe'), frecuenciaDias: numOrNull(val('pr-frecuencia')) };
+      S.planes.push(plan); scheduleSync();
+      const sel = el.form.servicio;
+      sel.add(new Option(nombre, nombre), sel.querySelector('option[value="__nuevo"]'));
+      sel.value = nombre;
+      document.getElementById('planRapido').hidden = true;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));   // rellena sesiones, fin, importe y frecuencia
+      break;
+    }
+    case 'planrapidocancel': {
+      const sel = el.form.servicio;
+      sel.value = sel.dataset.orig || '';
+      document.getElementById('planRapido').hidden = true;
+      break;
+    }
     case 'plannuevo': editPlan = 'nuevo'; render(); document.getElementById('cardPlanes').scrollIntoView(); break;
     case 'planeditar': editPlan = el.dataset.pid; render(); document.getElementById('cardPlanes').scrollIntoView(); break;
     case 'plancancel': editPlan = null; render(); break;
@@ -1259,6 +1344,7 @@ document.addEventListener('submit', async e => {
     if (p.proximaVisita && p.proximaVisita <= v.fecha) { p.proximaVisita = ''; p.horaVisita = ''; }
     if (d.proxima) { p.proximaVisita = d.proxima; p.horaVisita = d.hora || ''; }
     if (p.estado === 'pausado') p.estado = 'activo';
+    new FormData(f).getAll('pend').forEach(t => marcarPendiente(p, t));
     save(); toast('Seguimiento guardado');
   } else if (f.id === 'fn') {
     if (!okPrivacidad(d.texto)) return;
@@ -1270,6 +1356,10 @@ document.addEventListener('submit', async e => {
     if (!okPrivacidad(d.texto)) return;
     S.tareas.push({ id: uid(), fecha: d.fecha, texto: d.texto.trim(), hecho: false, pacienteId: f.dataset.pid || d.pacienteId || null });
     save(); toast('Tarea añadida');
+  } else if (f.id === 'fenv') {
+    const n = d.nombre.trim();
+    if (S.tiposEnvio.includes(n)) return toast('Ese tipo ya existe');
+    S.tiposEnvio.push(n); save(); toast('Tipo de envío añadido');
   } else if (f.id === 'fplan') {
     const nombre = d.nombre.trim();
     let x = f.dataset.id ? S.planes.find(y => y.id === f.dataset.id) : null;
@@ -1302,6 +1392,9 @@ document.addEventListener('submit', async e => {
   }
 });
 
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.closest('#planRapido')) { e.preventDefault(); document.querySelector('[data-act=planrapido]').click(); }
+});
 document.addEventListener('input', e => {
   if (e.target.id === 'q') {
     filtro.q = e.target.value; const pos = e.target.selectionStart;
@@ -1316,6 +1409,11 @@ document.addEventListener('change', e => {
     return;
   }
   if (e.target.id === 'fEstado') { filtro.estado = e.target.value; render(); }
+  if (e.target.closest('#fp') && e.target.name === 'servicio' && e.target.value === '__nuevo') {
+    const panel = document.getElementById('planRapido');
+    panel.hidden = false; document.getElementById('pr-nombre').focus();
+    return;
+  }
   if (e.target.closest('#fp') && (e.target.name === 'servicio' || e.target.name === 'fechaInicio')) {
     const f = e.target.form, plan = planPorNombre(f.servicio.value);
     if (!plan) return;
@@ -1365,6 +1463,7 @@ function exportarClinica(c) {
     for (const v of visitasOrd(p)) filas.push([p.nombre, c, 'Seguimiento · ' + v.tipo, v.fecha,
       junta([['Hábitos trabajados', v.habitos], ['Avances', v.avances], ['Acuerdos', v.acuerdos], ['Notas', v.notas]])]);
     for (const n of [...p.anotaciones].sort(cmpFecha)) filas.push([p.nombre, c, 'Anotación · ' + (CANALES[n.canal] || n.canal).slice(2).trim(), n.fecha, n.texto]);
+    for (const [tipo, e] of Object.entries(p.envios)) if (e.ultimo || e.pendiente) filas.push([p.nombre, c, 'Envío · ' + tipo, e.ultimo || '', e.pendiente ? 'Pendiente de enviar' : 'Último envío']);
     for (const t of S.tareas.filter(x => x.pacienteId === p.id).sort(cmpFecha)) filas.push([p.nombre, c, 'Tarea' + (t.hecho ? ' (hecha)' : ''), t.fecha, t.texto]);
   }
   const csv = '\ufeff' + filas.map(f => f.map(v => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"').join(';')).join('\r\n');
@@ -1405,7 +1504,7 @@ function cargarDemo() {
   const mk = o => Object.assign(nuevoPaciente(), { id: uid(), demo: true }, o);
   const vis = (fechas, extra = {}) => fechas.map((f, i) => ({ id: uid(), fecha: f, tipo: i ? 'Seguimiento' : 'Primera visita',
     habitos: '', avances: '', acuerdos: '', notas: '', cuenta: true, ...extra }));
-  const a = mk({ nombre: 'Ana P. R.', clinica: 'Clínica Ejemplo Norte', objetivo: 'Organizar las cenas entre semana', servicio: 'Bono 5 visitas', sesionesContratadas: 5,
+  const a = mk({ envios: { 'Dieta / pauta': { ultimo: d(-8) }, 'Recetas': { pendiente: t } }, nombre: 'Ana P. R.', clinica: 'Clínica Ejemplo Norte', objetivo: 'Organizar las cenas entre semana', servicio: 'Bono 5 visitas', sesionesContratadas: 5,
       fechaAlta: d(-60), fechaInicio: d(-60), importe: '—', reglas: { frecuenciaDias: 15, seguimientoModo: 'tras', seguimientoDias: 7, inactividadDias: 30, avisarSinProxima: true }, proximaVisita: d(3), horaVisita: '10:00',
       visitas: vis([d(-60), d(-45), d(-30), d(-8)], { habitos: 'Planificación semanal de cenas', acuerdos: 'Preparar lista de la compra el domingo' }) });
   const b = mk({ nombre: 'Jordi S. M.', clinica: 'Online', objetivo: 'Rendimiento deportivo', servicio: 'Visita suelta', fechaAlta: d(-50), fechaInicio: d(-50),
