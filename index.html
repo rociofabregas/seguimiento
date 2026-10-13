@@ -91,12 +91,33 @@
   .item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .item:last-child { border-bottom: 0; }
   .item .txt { flex: 1; min-width: 180px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button.on { background: var(--teal); color: #fff; }
+  .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .cal-h { font-size: 12px; color: var(--muted); text-align: center; padding: 2px 0; text-transform: uppercase; }
+  .cal-d { min-height: 92px; background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 4px 5px; cursor: pointer; overflow: hidden; }
+  .cal-d:hover { border-color: var(--teal-2); }
+  .cal-d.otro { opacity: .45; }
+  .cal-d.hoy { box-shadow: inset 0 0 0 2px var(--teal-2); }
+  .cal-d.sel { background: var(--teal-bg); }
+  .cal-d .n { font-size: 12px; font-weight: 600; }
+  .chip { display: block; font-size: 11px; border-radius: 5px; padding: 1px 5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--blue-bg); color: var(--blue); }
+  .chip.v { background: #efebe6; color: var(--muted); }
+  .chip.t { background: var(--orange-bg); color: #b4561a; }
+  .chip.mas { background: none; color: var(--muted); padding-left: 2px; }
+  .leyenda { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  .leyenda .chip { display: inline-block; margin: 0 4px 0 0; }
   @media (max-width: 640px) {
     header { padding: 10px 14px; gap: 10px; }
     .hide-m { display: none; }
     .alert { flex-direction: column; }
     .alert .acts { margin-left: 0; }
     .visit { flex-direction: column; gap: 2px; }
+    .cal { gap: 2px; }
+    .cal-d { min-height: 52px; padding: 3px; }
+    .cal-d .chip { display: inline-block; width: 7px; height: 7px; padding: 0; margin: 2px 2px 0 0; border-radius: 50%; font-size: 0; background: var(--blue); }
+    .cal-d .chip.v { background: #b9b2a9; } .cal-d .chip.t { background: var(--orange); } .cal-d .chip.mas { display: none; }
   }
 </style>
 </head>
@@ -131,6 +152,7 @@ const DEFAULTS = {
   patients: [],
   tareas: [],
   clinicas: [],
+  planes: null,
   plantillaSeg: 'Hola, ¿qué tal estos días desde nuestra última visita? ¿Cómo vas con lo que acordamos? Cualquier duda me dices 😊',
   plantillaInact: 'Hola, hace un tiempo que no nos vemos. ¿Cómo estás? Si quieres retomamos el seguimiento, dime qué día te iría bien.',
   reglasDefecto: { frecuenciaDias: 30, seguimientoModo: 'tras', seguimientoDias: 7, inactividadDias: 45, avisarSinProxima: true },
@@ -141,7 +163,7 @@ const DEFAULTS = {
 
 let S = structuredClone(DEFAULTS);
 let view = { tab: 'hoy' };
-let filtro = { q: '', estado: 'activos', clinica: (() => { try { return localStorage.getItem('crm-filtro-clinica') || ''; } catch (e) { return ''; } })() };
+let filtro = { q: '', estado: 'activos', cirugia: '', clinica: (() => { try { return localStorage.getItem('crm-filtro-clinica') || ''; } catch (e) { return ''; } })() };
 let unlocked = false;
 
 // ======================= Utilidades =======================
@@ -149,6 +171,7 @@ const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0
 const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const today = () => iso(new Date());
 const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + Number(n)); return iso(d); };
+const addMonths = (s, n) => { const d = parse(s); d.setMonth(d.getMonth() + Number(n)); return iso(d); };
 const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
 const fmt = s => s ? parse(s).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const fmtCorto = s => s ? parse(s).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
@@ -315,6 +338,10 @@ function normalize(d) {
   const s = Object.assign(structuredClone(DEFAULTS), d || {});
   s.tareas = Array.isArray(s.tareas) ? s.tareas : [];
   s.clinicas = Array.isArray(s.clinicas) ? s.clinicas : [];
+  if (!Array.isArray(s.planes)) s.planes = [
+    { nombre: 'Primera visita', sesiones: 1 }, { nombre: 'Bono 3 visitas', sesiones: 3 }, { nombre: 'Bono 5 visitas', sesiones: 5 },
+    { nombre: 'Plan trimestral', sesiones: 6, meses: 3 }, { nombre: 'Seguimiento mensual', sesiones: 1, meses: 1 },
+  ].map(x => ({ id: uid(), importe: '', frecuenciaDias: null, meses: null, ...x }));
   if (!Array.isArray(s.plantillas)) {
     s.plantillas = [
       { id: uid(), titulo: 'Seguimiento tras la visita', uso: 'seg', texto: s.plantillaSeg.replace(/^Hola,/, 'Hola {nombre},') },
@@ -541,6 +568,19 @@ function opcionesClinica(actual) {
     clinicasTodas().map(c => `<option value="${esc(c)}" ${c === actual ? 'selected' : ''}>${esc(c)}</option>`).join('') +
     `<option value="__nueva">➕ Nueva clínica…</option>`;
 }
+const planPorNombre = n => S.planes.find(x => x.nombre === n);
+function descPlan(x) {
+  return [x.sesiones ? `${x.sesiones} sesi${x.sesiones == 1 ? 'ón' : 'ones'}` : 'sesiones sin límite', x.meses ? `${x.meses} mes${x.meses == 1 ? '' : 'es'}` : '',
+    x.importe ? x.importe : '', x.frecuenciaDias ? `ver cada ${x.frecuenciaDias} días` : ''].filter(Boolean).join(' · ');
+}
+function tiempoDesde(f) {
+  const d = daysBetween(f, today());
+  if (d < 0) return `en ${-d} días`;
+  if (d < 60) return `hace ${d} días`;
+  const m = Math.floor(d / 30.44);
+  return m < 24 ? `hace ${m} meses` : `hace ${Math.floor(m / 12)} años`;
+}
+const tagCirugia = p => p && p.cirugia ? `<span class="tag o" title="Paciente de cirugía${p.fechaCirugia ? ' · ' + fmt(p.fechaCirugia) : ''}">Cirugía${p.fechaCirugia ? ' · ' + tiempoDesde(p.fechaCirugia) : ''}</span>` : '';
 const tagClinica = p => p && p.clinica ? `<span class="tag b">${esc(p.clinica)}</span>` : '';
 
 function alertas() {
@@ -681,7 +721,7 @@ function renderAlerta(a, cls) {
   if (p) acts += `<button data-act="ficha" data-id="${p.id}">Ficha</button>`;
   return `<div class="card alert ${cls}">
     <div>
-      <div class="row"><span class="who">${p ? esc(p.nombre) : 'General'}</span><span class="tag ${tc}">${tag}</span>${filtro.clinica ? '' : tagClinica(p)}
+      <div class="row"><span class="who">${p ? esc(p.nombre) : 'General'}</span><span class="tag ${tc}">${tag}</span>${filtro.clinica ? '' : tagClinica(p)}${tagCirugia(p)}
         <span class="hint">${a.tipo === 'bono' ? '' : relativo(a.fecha)}</span></div>
       <div class="what">${esc(a.titulo)}</div>
       <div class="hint">${esc(a.detalle)}</div>
@@ -695,6 +735,7 @@ function renderLista() {
   const list = S.patients
     .filter(p => filtro.estado === 'todos' || (filtro.estado === 'activos' ? p.estado !== 'alta' : p.estado === filtro.estado))
     .filter(pasaClinica)
+    .filter(p => !filtro.cirugia || (filtro.cirugia === 'si' ? p.cirugia : !p.cirugia))
     .filter(p => !q || [p.nombre, p.servicio, p.objetivo, p.clinica].join(' ').toLowerCase().includes(q))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   const al = alertas().filter(a => a.fecha <= t && a.tipo !== 'cita');
@@ -706,6 +747,10 @@ function renderLista() {
     <select id="fEstado" style="width:auto">
       ${[['activos', 'Activos y en pausa'], ['activo', 'Solo activos'], ['pausado', 'En pausa'], ['alta', 'De alta'], ['todos', 'Todos']]
         .map(([v, l]) => `<option value="${v}" ${filtro.estado === v ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>
+    <select id="fCirugia" style="width:auto">
+      ${[['', 'Todos los pacientes'], ['si', 'Solo cirugía'], ['no', 'Sin cirugía']]
+        .map(([v, l]) => `<option value="${v}" ${filtro.cirugia === v ? 'selected' : ''}>${l}</option>`).join('')}
     </select>${selectorClinica()}</div>`;
   if (!S.patients.length) return h + `<div class="card empty">Aún no tienes pacientes. Pulsa <b>+ Nuevo paciente</b> para crear la primera ficha.</div>`;
   if (!list.length) return h + `<div class="card empty">Ningún paciente coincide con la búsqueda o el filtro.</div>`;
@@ -718,7 +763,7 @@ function renderLista() {
     const estadoTag = p.estado === 'pausado' ? ' <span class="tag g">pausa</span>' : p.estado === 'alta' ? ' <span class="tag g">alta</span>' : '';
     const pagoTag = p.pago && p.pago !== 'pagado' ? ` <span class="tag r">${p.pago === 'parcial' ? 'pago parcial' : 'pendiente pago'}</span>` : '';
     h += `<tr data-act="ficha" data-id="${p.id}">
-      <td><b>${esc(p.nombre)}</b> <span title="Contacto preferido: ${CANALES[p.canal] || ''}">${(CANALES[p.canal] || '').split(' ')[0]}</span>${estadoTag} ${filtro.clinica ? '' : tagClinica(p)}<div class="hint">${esc(p.objetivo)}</div></td>
+      <td><b>${esc(p.nombre)}</b> <span title="Contacto preferido: ${CANALES[p.canal] || ''}">${(CANALES[p.canal] || '').split(' ')[0]}</span>${estadoTag} ${tagCirugia(p)} ${filtro.clinica ? '' : tagClinica(p)}<div class="hint">${esc(p.objetivo)}</div></td>
       <td class="hide-m">${esc(p.servicio) || '—'}${pagoTag}
         ${c ? `<div class="hint">${u}/${c} sesiones</div><div class="bar"><i style="width:${Math.min(100, u / c * 100)}%"></i></div>` : ''}</td>
       <td>${uv ? fmt(uv.fecha) + `<div class="hint">${relativo(uv.fecha)}</div>` : '—'}</td>
@@ -752,6 +797,54 @@ function filaTarea(t, conPaciente) {
     <button class="link danger" data-act="deltarea" data-tid="${t.id}" title="Eliminar">✕</button></div>`;
 }
 
+let agendaModo = (() => { try { return localStorage.getItem('crm-agenda-modo') || 'lista'; } catch (e) { return 'lista'; } })();
+let calMes = today().slice(0, 7), calDia = today();
+
+function eventosCalendario(desde, hasta) {
+  const m = {}, add = (f, e) => { if (f >= desde && f <= hasta) (m[f] = m[f] || []).push(e); };
+  for (const p of S.patients) {
+    if (!pasaClinica(p)) continue;
+    if (p.proximaVisita && p.estado !== 'alta') add(p.proximaVisita, { tipo: 'cita', p, orden: '0' + (p.horaVisita || '99') });
+    for (const v of p.visitas) add(v.fecha, { tipo: 'visita', p, v, orden: '1' });
+  }
+  for (const x of S.tareas) {
+    const p = x.pacienteId ? byId(x.pacienteId) : null;
+    if (p ? pasaClinica(p) : !filtro.clinica) add(x.fecha, { tipo: 'tarea', tarea: x, p, orden: '2' });
+  }
+  for (const f in m) m[f].sort((a, b) => a.orden.localeCompare(b.orden));
+  return m;
+}
+function renderCalendario() {
+  const [y, mo] = calMes.split('-').map(Number);
+  const primero = new Date(y, mo - 1, 1), inicio = addDays(iso(primero), -((primero.getDay() + 6) % 7));
+  const fin = addDays(inicio, 41), t = today(), ev = eventosCalendario(inicio, fin);
+  const nombreCorto = p => p ? esc(p.nombre.split(' ')[0]) : '';
+  let h = `<div class="row" style="margin-bottom:10px">
+      <button data-act="calmov" data-n="-1" title="Mes anterior">‹</button>
+      <b style="min-width:150px;text-align:center;text-transform:capitalize">${primero.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</b>
+      <button data-act="calmov" data-n="1" title="Mes siguiente">›</button>
+      <button data-act="calhoy">Hoy</button></div>
+    <div class="cal">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => `<div class="cal-h">${d}</div>`).join('')}`;
+  for (let i = 0; i < 42; i++) {
+    const f = addDays(inicio, i), es = ev[f] || [];
+    const cls = ['cal-d', f.slice(0, 7) !== calMes ? 'otro' : '', f === t ? 'hoy' : '', f === calDia ? 'sel' : ''].join(' ');
+    h += `<div class="${cls}" data-act="caldia" data-f="${f}"><div class="n">${Number(f.slice(8))}</div>
+      ${es.slice(0, 3).map(e => e.tipo === 'cita' ? `<span class="chip">${e.p.horaVisita ? esc(e.p.horaVisita) + ' ' : ''}${nombreCorto(e.p)}</span>`
+        : e.tipo === 'visita' ? `<span class="chip v">✓ ${nombreCorto(e.p)}</span>`
+        : `<span class="chip t">${e.tarea.hecho ? '✓' : '•'} ${esc(e.tarea.texto)}</span>`).join('')}
+      ${es.length > 3 ? `<span class="chip mas">+${es.length - 3} más</span>` : ''}</div>`;
+  }
+  h += `</div><div class="leyenda"><span><span class="chip">&nbsp;</span>Revisión programada</span><span><span class="chip v">&nbsp;</span>Seguimiento hecho</span><span><span class="chip t">&nbsp;</span>Tarea</span></div>`;
+  const delDia = ev[calDia] || eventosCalendario(calDia, calDia)[calDia] || [];
+  h += `<h3 style="text-transform:capitalize">${calDia === t ? 'Hoy' : fmtLargo(calDia)}</h3><div class="card">`;
+  h += delDia.length ? delDia.map(e => e.tipo === 'tarea' ? filaTarea(e.tarea, true)
+    : `<div class="item"><span class="tag ${e.tipo === 'cita' ? 'b' : 'g'}">${e.tipo === 'cita' ? 'Revisión' : 'Seguimiento hecho'}</span>
+        <div class="txt"><button class="link" data-act="ficha" data-id="${e.p.id}"><b>${esc(e.p.nombre)}</b></button>
+        ${e.tipo === 'cita' && e.p.horaVisita ? ' · ' + esc(e.p.horaVisita) : ''} ${tagCirugia(e.p)} ${filtro.clinica ? '' : tagClinica(e.p)}</div></div>`).join('')
+    : '<div class="hint">Nada programado este día.</div>';
+  return h + '</div>';
+}
+
 function renderAgenda() {
   const t = today(), hasta = addDays(t, 30);
   const items = [];
@@ -760,10 +853,13 @@ function renderAgenda() {
   for (const x of S.tareas) if (!x.hecho && x.fecha <= hasta && (x.pacienteId ? (byId(x.pacienteId) && pasaClinica(byId(x.pacienteId))) : !filtro.clinica)) items.push({ fecha: x.fecha < t ? t : x.fecha, tarea: x });
   items.sort((a, b) => cmpFecha(a, b) || (a.cita ? -1 : 1) || ((a.p && a.p.horaVisita) || '').localeCompare((b.p && b.p.horaVisita) || ''));
 
-  let h = `<div class="row" style="margin-bottom:16px"><h2 style="margin:0">Agenda y tareas</h2><span class="spacer"></span>${selectorClinica()}</div>
+  let h = `<div class="row" style="margin-bottom:16px"><h2 style="margin:0">Agenda y tareas</h2>
+    <span class="seg"><button data-act="agmodo" data-m="lista" class="${agendaModo === 'lista' ? 'on' : ''}">📋 Lista</button><button data-act="agmodo" data-m="calendario" class="${agendaModo === 'calendario' ? 'on' : ''}">📅 Calendario</button></span>
+    <span class="spacer"></span>${selectorClinica()}</div>
   <div class="card"><b>Nueva tarea o recordatorio</b>${formTarea(null)}
-    <div class="hint">Las revisiones se programan desde la ficha de cada paciente (campo «Próxima revisión»).</div></div>
-  <h3>Próximos 30 días</h3>`;
+    <div class="hint">Las revisiones se programan desde la ficha de cada paciente (campo «Próxima visita»).</div></div>`;
+  if (agendaModo === 'calendario') return h + renderCalendario();
+  h += `<h3>Próximos 30 días</h3>`;
   if (!items.length) h += `<div class="card empty">No hay revisiones ni tareas programadas para los próximos 30 días.</div>`;
   else {
     h += '<div class="card">';
@@ -791,7 +887,7 @@ function renderFicha(id) {
   const u = sesionesUsadas(p), c = Number(p.sesionesContratadas) || 0;
 
   let h = `<button class="link" data-go="pacientes">← Volver a pacientes</button>
-  <div class="row" style="margin:10px 0 16px"><h2 style="margin:0">${isNew ? 'Nuevo paciente' : esc(p.nombre)}</h2>${isNew ? '' : tagClinica(p)}${isNew ? '' : '<span class="spacer"></span>' + selectorPlantillas(p)}
+  <div class="row" style="margin:10px 0 16px"><h2 style="margin:0">${isNew ? 'Nuevo paciente' : esc(p.nombre)}</h2>${isNew ? '' : tagClinica(p) + tagCirugia(p)}${isNew ? '' : '<span class="spacer"></span>' + selectorPlantillas(p)}
     ${!isNew && c ? `<span class="tag">${u} de ${c} sesiones</span>` : ''}</div>
   <form id="fp" class="card grid" data-id="${p.id || ''}">
     <div class="aviso">${AVISO}</div>
@@ -800,15 +896,22 @@ function renderFicha(id) {
     <label>Fecha de alta<input name="fechaAlta" type="date" value="${v('fechaAlta')}"></label>
     <div class="full hint" style="margin-top:-6px">Nombre de pila y solo las iniciales de los apellidos. Si lo dejas vacío se le asigna un código (P-001…). Los datos de contacto se consultan en el sistema de la clínica.</div>
     <label>Estado del seguimiento<select name="estado">${sel('estado', [['activo', 'Activo'], ['pausado', 'En pausa'], ['alta', 'Finalizado / de alta']])}</select></label>
+    <label class="check"><input type="checkbox" name="cirugia" ${p.cirugia ? 'checked' : ''}> Paciente de cirugía</label>
+    <label>Fecha de la cirugía <span class="hint">(opcional)</span><input name="fechaCirugia" type="date" value="${v('fechaCirugia')}"></label>
     <label class="full">Objetivo general<input name="objetivo" value="${v('objetivo')}" placeholder="Ej. mejorar hábitos de desayuno, rendimiento deportivo…"></label>
 
     <div class="fieldset">Plan contratado</div>
-    <label>Servicio / plan<input name="servicio" list="servicios" value="${v('servicio')}" placeholder="Ej. Bono 5 visitas"></label>
+    <label>Plan<select name="servicio">
+      <option value="">— Sin plan —</option>
+      ${S.planes.map(x => `<option value="${esc(x.nombre)}" ${p.servicio === x.nombre ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}
+      ${p.servicio && !planPorNombre(p.servicio) ? `<option value="${v('servicio')}" selected>${v('servicio')}</option>` : ''}
+    </select></label>
     <label>Nº de sesiones incluidas<input name="sesionesContratadas" type="number" min="0" value="${v('sesionesContratadas')}" placeholder="vacío = sin límite"></label>
     <label>Inicio del plan<input name="fechaInicio" type="date" value="${v('fechaInicio')}"></label>
     <label>Fin / caducidad del plan<input name="fechaFinPlan" type="date" value="${v('fechaFinPlan')}"></label>
     <label>Importe<input name="importe" value="${v('importe')}" placeholder="Ej. 180 €"></label>
     <label>Pago<select name="pago">${sel('pago', [['pagado', 'Pagado'], ['parcial', 'Pago parcial'], ['pendiente', 'Pendiente']])}</select></label>
+    <div class="full hint" style="margin-top:-6px">Al elegir un plan se rellenan solos las sesiones, la fecha de fin, el importe y la frecuencia de visitas (puedes cambiarlos). Los planes se crean y editan en <b>Ajustes → Planes y servicios</b>.</div>
 
     <div class="fieldset">Plan de seguimiento</div>
     <label>Próxima visita<input name="proximaVisita" type="date" value="${v('proximaVisita')}"></label>
@@ -823,8 +926,7 @@ function renderFicha(id) {
       ${!isNew ? `<button type="button" class="danger" data-act="borrar" data-id="${p.id}">Eliminar paciente</button>` : ''}
     </div>
   </form>
-  <datalist id="servicios">${['Primera visita', 'Visita suelta', 'Bono 3 visitas', 'Bono 5 visitas', 'Plan trimestral', 'Seguimiento mensual', 'Online']
-    .map(s => `<option value="${s}">`).join('')}</datalist>`;
+`;
   if (isNew) return h;
 
   const vs = visitasOrd(p).reverse();
@@ -876,6 +978,7 @@ function renderFicha(id) {
   return h;
 }
 
+let editPlan = null;       // id del plan en edición ('nuevo' para crear)
 let editPlantilla = null;   // id de la plantilla en edición ('nueva' para crear)
 function renderPlantillas() {
   const usoTxt = { seg: 'Por defecto: seguimiento tras visita', inact: 'Por defecto: retomar seguimiento' };
@@ -916,6 +1019,25 @@ function renderAjustes() {
     <label>Bloquear tras … minutos sin uso<input name="bloqueoMin" type="number" min="1" max="240" value="${esc(S.bloqueoMin)}"></label>
     <div class="full"><button class="primary">Guardar ajustes</button></div>
   </form>
+
+  <div class="card" id="cardPlanes">
+    <div class="row"><b>Planes y servicios</b><span class="spacer"></span>
+      ${editPlan ? '' : '<button data-act="plannuevo">+ Nuevo plan</button>'}</div>
+    <p class="hint">Los planes que ofreces. Al asignar uno a un paciente se rellenan solos sus datos.</p>
+    ${editPlan ? (() => { const x = editPlan === 'nuevo' ? {} : S.planes.find(y => y.id === editPlan) || {}; return `
+    <form id="fplan" class="grid" data-id="${x.id || ''}" style="margin-bottom:12px">
+      <label class="full">Nombre del plan<input name="nombre" required value="${esc(x.nombre || '')}" placeholder="Ej. Bono 5 visitas, Plan cirugía 6 meses…"></label>
+      <label>Nº de sesiones<input name="sesiones" type="number" min="0" value="${esc(x.sesiones ?? '')}" placeholder="vacío = sin límite"></label>
+      <label>Duración (meses)<input name="meses" type="number" min="0" value="${esc(x.meses ?? '')}" placeholder="vacío = sin caducidad"></label>
+      <label>Importe<input name="importe" value="${esc(x.importe || '')}" placeholder="Ej. 180 €"></label>
+      <label>Ver al paciente cada … días<input name="frecuenciaDias" type="number" min="1" value="${esc(x.frecuenciaDias ?? '')}" placeholder="opcional"></label>
+      <div class="full row"><button class="primary">Guardar plan</button><button type="button" data-act="plancancel">Cancelar</button></div>
+    </form>`; })() : ''}
+    ${S.planes.map(x => { const n = S.patients.filter(p => p.servicio === x.nombre).length; return `<div class="item">
+      <div class="txt"><b>${esc(x.nombre)}</b> <span class="hint">${esc(descPlan(x))}${n ? ` · ${n} paciente${n === 1 ? '' : 's'}` : ''}</span></div>
+      <button data-act="planeditar" data-pid="${x.id}">Editar</button>
+      <button class="link danger" data-act="planborrar" data-pid="${x.id}" title="Eliminar">✕</button></div>`; }).join('') || '<div class="hint">Aún no hay planes.</div>'}
+  </div>
 
   <div class="card">
     <b>Clínicas y centros</b>
@@ -999,6 +1121,20 @@ document.addEventListener('click', async e => {
     case 'tareahecha': tarea.hecho = true; save(); break;
     case 'toggletarea': tarea.hecho = el.checked; save(); break;
     case 'deltarea': if (confirm('¿Eliminar esta tarea?')) { S.tareas = S.tareas.filter(x => x !== tarea); save(); } break;
+    case 'agmodo':
+      agendaModo = el.dataset.m; try { localStorage.setItem('crm-agenda-modo', agendaModo); } catch (err) {}
+      render(); break;
+    case 'calmov': { const [y, m] = calMes.split('-').map(Number); const d = new Date(y, m - 1 + Number(el.dataset.n), 1); calMes = iso(d).slice(0, 7); calDia = calMes === today().slice(0, 7) ? today() : iso(d); render(); break; }
+    case 'calhoy': calMes = today().slice(0, 7); calDia = today(); render(); break;
+    case 'caldia': calDia = el.dataset.f; if (calDia.slice(0, 7) !== calMes) calMes = calDia.slice(0, 7); render(); break;
+    case 'plannuevo': editPlan = 'nuevo'; render(); document.getElementById('cardPlanes').scrollIntoView(); break;
+    case 'planeditar': editPlan = el.dataset.pid; render(); document.getElementById('cardPlanes').scrollIntoView(); break;
+    case 'plancancel': editPlan = null; render(); break;
+    case 'planborrar': {
+      const x = S.planes.find(y => y.id === el.dataset.pid);
+      if (confirm(`¿Eliminar el plan «${x.nombre}»? Los pacientes que lo tengan lo conservan en su ficha.`)) { S.planes = S.planes.filter(y => y !== x); save(); }
+      break;
+    }
     case 'tplnueva': editPlantilla = 'nueva'; render(); scrollTo(0, 0); break;
     case 'tpleditar': editPlantilla = el.dataset.tid; render(); scrollTo(0, 0); break;
     case 'tplcancel': editPlantilla = null; render(); break;
@@ -1014,9 +1150,11 @@ document.addEventListener('click', async e => {
     case 'nocita': if (confirm(`¿Quitar la revisión del ${fmt(p.proximaVisita)} de ${p.nombre}?`)) { p.proximaVisita = ''; p.horaVisita = ''; save(); } break;
     case 'delvisita': if (confirm('¿Eliminar este seguimiento? No se puede deshacer.')) { p.visitas = p.visitas.filter(v => v.id !== el.dataset.vid); save(); } break;
     case 'renovar': {
-      const n = prompt('¿Cuántas sesiones incluye el nuevo plan?', p.sesionesContratadas || '');
+      const plan = planPorNombre(p.servicio);
+      const n = prompt('¿Cuántas sesiones incluye el nuevo plan?', (plan && plan.sesiones) || p.sesionesContratadas || '');
       if (n === null) return;
-      p.sesionesContratadas = Number(n) || ''; p.fechaInicio = today(); p.fechaFinPlan = ''; p.pago = 'pendiente';
+      p.sesionesContratadas = Number(n) || ''; p.fechaInicio = today(); p.pago = 'pendiente';
+      p.fechaFinPlan = plan && plan.meses ? addMonths(today(), plan.meses) : '';
       save(); toast('Plan renovado'); break;
     }
     case 'borrar':
@@ -1109,6 +1247,7 @@ document.addEventListener('submit', async e => {
     for (const k of ['nombre', 'fechaAlta', 'clinica', 'estado', 'objetivo', 'servicio', 'fechaInicio', 'fechaFinPlan', 'importe', 'pago', 'proximaVisita', 'horaVisita', 'notas'])
       p[k] = (d[k] || '').trim();
     p.sesionesContratadas = d.sesionesContratadas ? Number(d.sesionesContratadas) : '';
+    p.cirugia = !!d.cirugia; p.fechaCirugia = d.cirugia ? (d.fechaCirugia || '') : '';
     p.reglas = leerReglas(d); p.canal = d.canal;
     view = { tab: 'ficha', id: p.id };
     save(); toast(nuevo ? 'Paciente creado' : 'Cambios guardados');
@@ -1131,6 +1270,14 @@ document.addEventListener('submit', async e => {
     if (!okPrivacidad(d.texto)) return;
     S.tareas.push({ id: uid(), fecha: d.fecha, texto: d.texto.trim(), hecho: false, pacienteId: f.dataset.pid || d.pacienteId || null });
     save(); toast('Tarea añadida');
+  } else if (f.id === 'fplan') {
+    const nombre = d.nombre.trim();
+    let x = f.dataset.id ? S.planes.find(y => y.id === f.dataset.id) : null;
+    if (S.planes.some(y => y !== x && y.nombre === nombre)) return toast('Ya existe un plan con ese nombre');
+    if (!x) { x = { id: uid() }; S.planes.push(x); }
+    if (x.nombre && x.nombre !== nombre) S.patients.forEach(p => { if (p.servicio === x.nombre) p.servicio = nombre; });
+    Object.assign(x, { nombre, sesiones: numOrNull(d.sesiones), meses: numOrNull(d.meses), importe: d.importe.trim(), frecuenciaDias: numOrNull(d.frecuenciaDias) });
+    editPlan = null; save(); toast('Plan guardado');
   } else if (f.id === 'fpl') {
     if (!okPrivacidad(d.texto)) return;
     let t = f.dataset.id ? S.plantillas.find(x => x.id === f.dataset.id) : null;
@@ -1169,6 +1316,21 @@ document.addEventListener('change', e => {
     return;
   }
   if (e.target.id === 'fEstado') { filtro.estado = e.target.value; render(); }
+  if (e.target.closest('#fp') && (e.target.name === 'servicio' || e.target.name === 'fechaInicio')) {
+    const f = e.target.form, plan = planPorNombre(f.servicio.value);
+    if (!plan) return;
+    if (!f.fechaInicio.value) f.fechaInicio.value = today();
+    if (plan.meses) f.fechaFinPlan.value = addMonths(f.fechaInicio.value, plan.meses);
+    if (e.target.name === 'servicio') {
+      f.sesionesContratadas.value = plan.sesiones ?? '';
+      if (!plan.meses) f.fechaFinPlan.value = '';
+      if (plan.importe) f.importe.value = plan.importe;
+      if (plan.frecuenciaDias) f.frecuenciaDias.value = plan.frecuenciaDias;
+      toast(`Datos de «${plan.nombre}» aplicados`);
+    }
+    return;
+  }
+  if (e.target.id === 'fCirugia') { filtro.cirugia = e.target.value; render(); return; }
   if (e.target.name === 'clinica' && e.target.closest('#fp') && e.target.value === '__nueva') {
     const n = (prompt('Nombre de la nueva clínica o centro:') || '').trim();
     if (!n) { e.target.value = ''; return; }
@@ -1196,7 +1358,7 @@ function exportarClinica(c) {
   const filas = [['Paciente', 'Clínica', 'Tipo de registro', 'Fecha', 'Contenido']];
   const junta = pares => pares.filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}: ${v}`).join(' | ');
   for (const p of S.patients.filter(x => x.clinica === c).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))) {
-    filas.push([p.nombre, c, 'Ficha', p.fechaAlta, junta([['Estado', p.estado], ['Objetivo', p.objetivo], ['Plan', p.servicio],
+    filas.push([p.nombre, c, 'Ficha', p.fechaAlta, junta([['Estado', p.estado], ['Cirugía', p.cirugia ? 'Sí' + (p.fechaCirugia ? ' (' + p.fechaCirugia + ')' : '') : ''], ['Objetivo', p.objetivo], ['Plan', p.servicio],
       ['Sesiones incluidas', p.sesionesContratadas], ['Sesiones usadas', sesionesUsadas(p)], ['Inicio plan', p.fechaInicio], ['Fin plan', p.fechaFinPlan],
       ['Importe', p.importe], ['Pago', p.pago], ['Próxima visita', [p.proximaVisita, p.horaVisita].filter(Boolean).join(' ')],
       ['Contacto preferido', (CANALES[p.canal] || '').slice(2).trim()], ['Notas', p.notas]])]);
@@ -1249,7 +1411,7 @@ function cargarDemo() {
   const b = mk({ nombre: 'Jordi S. M.', clinica: 'Online', objetivo: 'Rendimiento deportivo', servicio: 'Visita suelta', fechaAlta: d(-50), fechaInicio: d(-50),
       pago: 'pendiente', canal: 'email', reglas: { frecuenciaDias: 30, seguimientoModo: 'cada', seguimientoDias: 10, inactividadDias: 40, avisarSinProxima: true },
       ultimoMensaje: d(-40), anotaciones: [{ id: uid(), fecha: d(-40), canal: 'email', texto: 'Le envié la guía de snacks' }], visitas: vis([d(-50)]) });
-  const c = mk({ nombre: 'Marta L. G.', clinica: 'Clínica Ejemplo Norte', objetivo: 'Mejorar desayunos', servicio: 'Plan trimestral', sesionesContratadas: 6,
+  const c = mk({ nombre: 'Marta L. G.', cirugia: true, fechaCirugia: d(-120), clinica: 'Clínica Ejemplo Norte', objetivo: 'Mejorar desayunos', servicio: 'Plan trimestral', sesionesContratadas: 6,
       fechaAlta: d(-85), fechaInicio: d(-85), fechaFinPlan: d(5), reglas: { frecuenciaDias: 15, seguimientoModo: 'tras', seguimientoDias: 3, inactividadDias: 30, avisarSinProxima: true }, proximaVisita: d(-1),
       visitas: vis([d(-85), d(-70), d(-55), d(-40), d(-25)]) });
   S.patients.push(a, b, c);
