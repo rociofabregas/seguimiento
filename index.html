@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Rocío · Seguimiento Nutricional</title>
+<style>
+  :root {
+    --teal: #0f766e; --teal-2: #14b8a6; --teal-bg: #e6f4f2;
+    --orange: #e8772e; --orange-bg: #fdf0e6;
+    --red: #c2410c; --red-bg: #fde8e1;
+    --blue: #2563eb; --blue-bg: #e8effd;
+    --ink: #2a2f33; --muted: #6f7579; --line: #ebe5de; --bg: #faf7f3; --card: #fff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, sans-serif; }
+  header { background: var(--teal); color: #fff; padding: 12px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .brand { font-size: 17px; font-weight: 700; letter-spacing: .01em; }
+  .brand span { font-weight: 400; opacity: .85; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { background: transparent; color: #d7efec; border: 0; padding: 7px 13px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  nav button.on { background: rgba(255,255,255,.18); color: #fff; }
+  nav .count { background: var(--orange); color: #fff; border-radius: 10px; padding: 0 7px; font-size: 12px; margin-left: 4px; }
+  #sync { font-size: 13px; opacity: .9; cursor: default; }
+  #sync.err { background: var(--orange); padding: 2px 9px; border-radius: 8px; cursor: pointer; opacity: 1; }
+  .hbtn { background: rgba(255,255,255,.12); color: #fff; border: 0; }
+  .hbtn:hover { background: rgba(255,255,255,.25); }
+  body.locked nav, body.locked #sync, body.locked .hbtn { display: none; }
+  main { max-width: 1050px; margin: 0 auto; padding: 24px 16px 60px; }
+  h2 { font-size: 20px; margin: 0 0 16px; }
+  h3 { font-size: 13px; margin: 22px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(60,40,20,.03); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  button, .btn { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 7px 12px; border-radius: 9px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+  button:hover, .btn:hover { border-color: var(--teal-2); }
+  button:disabled { opacity: .6; cursor: wait; }
+  .primary { background: var(--teal); color: #fff; border-color: var(--teal); }
+  .primary:hover { background: #0b5f58; }
+  .check { display: flex; gap: 8px; align-items: center; color: var(--ink); align-self: end; padding-bottom: 9px; }
+  .check input { width: auto; }
+  .danger { color: var(--red); }
+  .link { border: 0; background: none; color: var(--teal); padding: 0; }
+  input, select, textarea { font: inherit; padding: 8px 10px; border: 1px solid #d8d2ca; border-radius: 9px; background: #fff; width: 100%; color: var(--ink); }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal-2); outline-offset: -1px; border-color: transparent; }
+  textarea { min-height: 64px; resize: vertical; }
+  label { display: block; font-size: 13px; color: var(--muted); }
+  label > input, label > select, label > textarea { margin-top: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px; }
+  .full { grid-column: 1 / -1; }
+  .fieldset { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-weight: 600; font-size: 14px; color: var(--teal); }
+  .hint { font-size: 12px; color: var(--muted); }
+  .aviso { grid-column: 1 / -1; background: var(--orange-bg); color: #8a4413; border-radius: 9px; padding: 8px 12px; font-size: 13px; }
+  .alert { display: flex; gap: 14px; align-items: flex-start; border-left: 4px solid var(--blue); }
+  .alert.atrasado { border-left-color: var(--red); }
+  .alert.hoy { border-left-color: var(--orange); }
+  .alert .who { font-weight: 600; }
+  .alert .what { margin: 2px 0; }
+  .alert .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--teal-bg); color: var(--teal); white-space: nowrap; }
+  .tag.o { background: var(--orange-bg); color: #b4561a; }
+  .tag.r { background: var(--red-bg); color: var(--red); }
+  .tag.b { background: var(--blue-bg); color: var(--blue); }
+  .tag.g { background: #efebe6; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--teal-bg); }
+  .empty { text-align: center; color: var(--muted); padding: 30px 20px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 24px; color: var(--teal); }
+  .stat span { font-size: 13px; color: var(--muted); }
+  .visit { border-bottom: 1px solid var(--line); padding: 10px 0; display: flex; gap: 12px; }
+  .visit:last-child { border-bottom: 0; }
+  .visit .d { min-width: 115px; font-weight: 600; }
+  .visit .n { flex: 1; color: #3d4448; }
+  .visit .n p { margin: 0 0 4px; white-space: pre-wrap; }
+  .visit .n b { color: var(--teal); font-weight: 600; font-size: 13px; }
+  .banner { background: var(--orange-bg); border: 1px solid #f5cfae; border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+  .bar { height: 6px; background: #ede8e2; border-radius: 4px; overflow: hidden; width: 90px; margin-top: 4px; }
+  .bar i { display: block; height: 100%; background: var(--teal-2); }
+  .gate { max-width: 420px; margin: 40px auto; }
+  .gate h2 { margin-bottom: 6px; }
+  .gate form { display: grid; gap: 12px; }
+  .err { color: var(--red); font-size: 14px; min-height: 1em; }
+  .day { font-weight: 600; margin: 18px 0 8px; color: var(--teal); }
+  .item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .item:last-child { border-bottom: 0; }
+  .item .txt { flex: 1; min-width: 180px; }
+  @media (max-width: 640px) {
+    header { padding: 10px 14px; gap: 10px; }
+    .hide-m { display: none; }
+    .alert { flex-direction: column; }
+    .alert .acts { margin-left: 0; }
+    .visit { flex-direction: column; gap: 2px; }
+  }
+</style>
+</head>
+<body class="locked">
+<header>
+  <div class="brand">Rocío <span>· Seguimiento Nutricional</span></div>
+  <nav id="nav">
+    <button data-go="hoy">Hoy</button>
+    <button data-go="pacientes">Pacientes</button>
+    <button data-go="agenda">Agenda</button>
+    <button data-go="plantillas">Plantillas</button>
+    <button data-go="ajustes">Ajustes</button>
+  </nav>
+  <span class="spacer"></span>
+  <span id="sync"></span>
+  <button class="hbtn" data-act="bloquear" title="Bloquear (vuelve a pedir la clave de cifrado)">🔒 Bloquear</button>
+</header>
+<div id="demoBar" hidden style="background:#fdf0e6;color:#8a4413;text-align:center;padding:8px 12px;font-size:14px;border-bottom:1px solid #f5cfae">
+  🧪 <b>Modo demostración</b> · datos ficticios · no se guarda nada (al recargar vuelve a empezar)</div>
+<main id="app"><div class="empty">Cargando…</div></main>
+
+<script>
+// ======================= Configuración =======================
+const SB_URL = 'https://msqjujrsiocwdojlkzkz.supabase.co';
+const SB_KEY = 'sb_publishable_nwMuYrGbpVHK2ESg3B5_Iw_CzqNou0G'; // clave pública: segura en el navegador, la protección real es RLS + cifrado
+const SESSION_KEY = 'crm-sesion';
+const LEGACY_KEY = 'crm-pacientes-v1';   // datos de la versión solo-local, se migran al crear la bóveda
+const ITER = 600000;                     // PBKDF2-SHA256
+const AVISO = '⚠️ No introduzcas nombres completos, teléfonos, emails, diagnósticos ni historia clínica.';
+
+const DEFAULTS = {
+  patients: [],
+  tareas: [],
+  clinicas: [],
+  plantillaSeg: 'Hola, ¿qué tal estos días desde nuestra última visita? ¿Cómo vas con lo que acordamos? Cualquier duda me dices 😊',
+  plantillaInact: 'Hola, hace un tiempo que no nos vemos. ¿Cómo estás? Si quieres retomamos el seguimiento, dime qué día te iría bien.',
+  reglasDefecto: { frecuenciaDias: 30, seguimientoModo: 'tras', seguimientoDias: 7, inactividadDias: 45, avisarSinProxima: true },
+  canalDefecto: 'whatsapp',
+  bloqueoMin: 20,
+  lastBackup: null
+};
+
+let S = structuredClone(DEFAULTS);
+let view = { tab: 'hoy' };
+let filtro = { q: '', estado: 'activos', clinica: (() => { try { return localStorage.getItem('crm-filtro-clinica') || ''; } catch (e) { return ''; } })() };
+let unlocked = false;
+
+// ======================= Utilidades =======================
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const today = () => iso(new Date());
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + Number(n)); return iso(d); };
+const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+const fmt = s => s ? parse(s).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const fmtCorto = s => s ? parse(s).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
+const fmtLargo = s => parse(s).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+function relativo(s) {
+  const n = daysBetween(today(), s);
+  if (n === 0) return 'hoy';
+  if (n === 1) return 'mañana';
+  if (n === -1) return 'ayer';
+  return n > 0 ? `en ${n} días` : `hace ${-n} días`;
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+const byId = id => S.patients.find(p => p.id === id);
+const cmpFecha = (a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0;
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2a2f33;color:#fff;padding:9px 16px;border-radius:9px;font-size:14px;z-index:9;max-width:90vw';
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+}
+
+// ======================= Cifrado (AES-256-GCM) =======================
+let cryptoKey = null, salt = null;
+function b64(buf) {
+  const b = new Uint8Array(buf); let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pass, saltBytes) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: saltBytes, iterations: ITER, hash: 'SHA-256' }, base,
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptState() {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, new TextEncoder().encode(JSON.stringify(S)));
+  return JSON.stringify({ v: 1, kdf: 'PBKDF2-SHA256', iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct) });
+}
+async function decryptBlob(o, key) {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv) }, key, unb64(o.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+// ======================= Supabase (REST, sin librerías externas) =======================
+let session = null, refreshing = null;
+function storeSession() { try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (e) {} }
+function clearSession() { session = null; try { localStorage.removeItem(SESSION_KEY); } catch (e) {} }
+function traducir(msg) {
+  const m = String(msg || '');
+  if (/invalid login credentials/i.test(m)) return 'Correo o contraseña incorrectos.';
+  if (/email not confirmed/i.test(m)) return 'El correo aún no está confirmado. Revisa tu bandeja de entrada.';
+  if (/rate limit|too many/i.test(m)) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if (/password should be at least/i.test(m)) return 'La contraseña es demasiado corta.';
+  if (/same.*password/i.test(m)) return 'La nueva contraseña debe ser distinta de la anterior.';
+  if (/failed to fetch|network/i.test(m)) return 'Sin conexión con el servidor. Comprueba Internet.';
+  return m;
+}
+async function authToken(grant, body) {
+  const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=${grant}`, {
+    method: 'POST', headers: { apikey: SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(traducir(j.error_description || j.msg || j.message || 'Error de acceso')); e.auth = true; throw e; }
+  session = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + j.expires_in * 1000,
+    user_id: j.user.id, email: j.user.email };
+  storeSession();
+}
+async function ensureFresh() {
+  if (!session) { const e = new Error('Sesión no iniciada'); e.auth = true; throw e; }
+  if (Date.now() > session.expires_at - 60000) {
+    refreshing = refreshing || authToken('refresh_token', { refresh_token: session.refresh_token }).finally(() => refreshing = null);
+    await refreshing;
+  }
+}
+async function api(path, opts = {}) {
+  await ensureFresh();
+  const r = await fetch(SB_URL + path, { ...opts, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + session.access_token,
+    'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const txt = await r.text();
+  const j = txt ? JSON.parse(txt) : null;
+  if (!r.ok) { const e = new Error(traducir(j && (j.message || j.msg || j.error_description)) || ('Error ' + r.status)); e.code = j && j.code; e.status = r.status; throw e; }
+  return j;
+}
+
+// ======================= Bóveda: una fila cifrada por usuaria =======================
+let version = 0, rowExists = false, remoteRow = null;
+let dirty = false, syncing = false, syncTimer = null;
+
+async function fetchVault() {
+  const rows = await api(`/rest/v1/vault?select=data,version&user_id=eq.${session.user_id}`);
+  return rows[0] || null;
+}
+async function pushVault() {
+  const data = await encryptState();
+  if (!rowExists) {
+    try {
+      await api('/rest/v1/vault', { method: 'POST', headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ user_id: session.user_id, data, version: 1 }) });
+    } catch (e) { if (e.status === 409) return false; throw e; }
+    rowExists = true; version = 1; return true;
+  }
+  const rows = await api(`/rest/v1/vault?user_id=eq.${session.user_id}&version=eq.${version}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ data, version: version + 1, updated_at: new Date().toISOString() }) });
+  if (!rows.length) return false;   // otra sesión guardó antes: conflicto
+  version++; return true;
+}
+// Modo demostración (?demo): sin Supabase, datos ficticios en memoria
+const DEMO = new URLSearchParams(location.search).has('demo');
+function scheduleSync() {
+  if (DEMO) { dirty = false; return; }
+  dirty = true; setStatus('saving');
+  clearTimeout(syncTimer); syncTimer = setTimeout(sync, 700);
+}
+async function sync() {
+  if (syncing) { clearTimeout(syncTimer); syncTimer = setTimeout(sync, 400); return; }
+  if (!dirty) return;
+  syncing = true; dirty = false; setStatus('saving');
+  try {
+    if (!(await pushVault())) await resolverConflicto();
+    setStatus(dirty ? 'saving' : 'ok');
+  } catch (e) {
+    dirty = true; setStatus('error', e.message);
+    if (e.auth) { clearSession(); location.reload(); return; }
+    clearTimeout(syncTimer); syncTimer = setTimeout(sync, 15000);
+  } finally { syncing = false; }
+}
+async function resolverConflicto() {
+  const remoto = await fetchVault();
+  const quedarme = confirm('Se han guardado cambios desde otro dispositivo mientras trabajabas aquí.\n\n' +
+    'ACEPTAR → conservar los datos de ESTE dispositivo (se sobrescriben los del otro).\n' +
+    'CANCELAR → cargar los datos del otro dispositivo (se pierden los últimos cambios hechos aquí).');
+  rowExists = !!remoto;
+  if (quedarme) { version = remoto ? remoto.version : 0; if (!(await pushVault())) throw new Error('No se pudo guardar, inténtalo de nuevo'); }
+  else {
+    try { S = normalize(await decryptBlob(JSON.parse(remoto.data), cryptoKey)); }
+    catch (e) { location.reload(); return; }   // la clave cambió en otro dispositivo
+    version = remoto.version; render();
+  }
+}
+async function comprobarRemoto() {
+  if (DEMO || !unlocked || dirty || syncing) return;
+  try {
+    const r = await api(`/rest/v1/vault?select=version&user_id=eq.${session.user_id}`);
+    if (r[0] && r[0].version !== version) {
+      const full = await fetchVault();
+      try { S = normalize(await decryptBlob(JSON.parse(full.data), cryptoKey)); }
+      catch (e) { location.reload(); return; }
+      version = full.version; render(); toast('Actualizado con los cambios de otro dispositivo');
+    }
+  } catch (e) {}
+}
+function setStatus(st, msg) {
+  const el = document.getElementById('sync');
+  el.className = st === 'error' ? 'err' : '';
+  el.textContent = st === 'ok' ? '✓ Guardado' : st === 'saving' ? 'Guardando…' : st === 'error' ? '⚠ Sin guardar · reintentar' : '';
+  el.title = st === 'error' ? (msg || '') + ' — se reintentará automáticamente' : 'Datos cifrados y guardados en la nube';
+}
+function save() { render(); scheduleSync(); }
+
+function normalize(d) {
+  const s = Object.assign(structuredClone(DEFAULTS), d || {});
+  s.tareas = Array.isArray(s.tareas) ? s.tareas : [];
+  s.clinicas = Array.isArray(s.clinicas) ? s.clinicas : [];
+  if (!Array.isArray(s.plantillas)) {
+    s.plantillas = [
+      { id: uid(), titulo: 'Seguimiento tras la visita', uso: 'seg', texto: s.plantillaSeg.replace(/^Hola,/, 'Hola {nombre},') },
+      { id: uid(), titulo: 'Retomar el seguimiento', uso: 'inact', texto: s.plantillaInact.replace(/^Hola,/, 'Hola {nombre},') },
+      { id: uid(), titulo: 'Recordatorio de visita', uso: '', texto: 'Hola {nombre}, te recuerdo que nos vemos el {fecha} a las {hora}. ¡Hasta pronto!' },
+      { id: uid(), titulo: 'Envío de material', uso: '', texto: 'Hola {nombre}, como te comenté en la consulta, te envío el material. Cualquier duda me dices 😊' },
+    ];
+  }
+  delete s.plantillaSeg; delete s.plantillaInact;
+  for (const p of s.patients) {
+    p.visitas = p.visitas || []; p.hechos = p.hechos || {}; p.reglas = p.reglas || {};
+    delete p.telefono; delete p.email;   // modo seudónimo: no se guardan datos de contacto
+    p.anotaciones = p.anotaciones || []; p.canal = p.canal || 'whatsapp'; p.ultimoMensaje = p.ultimoMensaje || '';
+    if (!p.reglas.seguimientoModo) p.reglas.seguimientoModo = p.reglas.seguimientoDias ? 'tras' : 'no';
+    if (p.reglas.avisarSinProxima === undefined) p.reglas.avisarSinProxima = true;
+    if (p.recordatorios) { for (const r of p.recordatorios) s.tareas.push({ ...r, pacienteId: p.id }); delete p.recordatorios; }
+    if (p.fechaAlta === undefined) p.fechaAlta = p.fechaInicio || '';
+  }
+  return s;
+}
+
+// ======================= Arranque y acceso =======================
+let gate = { screen: 'loading', error: '' };
+function showGate(screen, error = '') {
+  unlocked = false; document.body.classList.add('locked');
+  gate = { screen, error }; renderGate();
+}
+async function start() {
+  if (DEMO) {
+    document.getElementById('demoBar').hidden = false;
+    session = { email: 'demo@ejemplo.test', user_id: 'demo' };
+    S = normalize(null); cargarDemo(); S.lastBackup = today();
+    abrir(); setStatus('');
+    return;
+  }
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('error_description')) { history.replaceState(null, '', location.pathname); return showGate('login', traducir(h.get('error_description'))); }
+  if (h.get('access_token')) {
+    history.replaceState(null, '', location.pathname);
+    session = { access_token: h.get('access_token'), refresh_token: h.get('refresh_token'),
+      expires_at: Date.now() + Number(h.get('expires_in') || 3600) * 1000 };
+    try {
+      const u = await api('/auth/v1/user');
+      session.user_id = u.id; session.email = u.email; storeSession();
+      if (h.get('type') === 'recovery') return showGate('newpass');
+    } catch (e) { clearSession(); return showGate('login', 'El enlace ha caducado o no es válido. Pide uno nuevo.'); }
+  }
+  if (!session) { try { session = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (e) {} }
+  if (!session) return showGate('login');
+  await prepararClave();
+}
+async function prepararClave() {
+  showGate('loading');
+  try {
+    remoteRow = await fetchVault(); rowExists = !!remoteRow;
+    showGate(remoteRow ? 'clave' : 'crear');
+  } catch (e) {
+    if (e.auth) { clearSession(); return showGate('login', 'La sesión ha caducado. Vuelve a entrar.'); }
+    if (e.code === 'PGRST205' || e.code === '42P01') return showGate('setup');
+    showGate('reintentar', e.message);
+  }
+}
+async function desbloquear(pass) {
+  const o = JSON.parse(remoteRow.data);
+  const k = await deriveKey(pass, unb64(o.salt));
+  let data;
+  try { data = await decryptBlob(o, k); } catch (e) { throw new Error('Clave de cifrado incorrecta.'); }
+  salt = unb64(o.salt); cryptoKey = k; version = remoteRow.version; remoteRow = null;
+  S = normalize(data); abrir();
+}
+async function crearBoveda(pass) {
+  salt = crypto.getRandomValues(new Uint8Array(16));
+  cryptoKey = await deriveKey(pass, salt);
+  let old = null;
+  try { old = JSON.parse(localStorage.getItem(LEGACY_KEY)); } catch (e) {}
+  const migrar = old && Array.isArray(old.patients) && old.patients.length;
+  S = normalize(migrar ? old : null);
+  dirty = true; await sync();
+  if (!rowExists) throw new Error('No se ha podido guardar en la nube. Comprueba la conexión.');
+  if (migrar) { try { localStorage.removeItem(LEGACY_KEY); } catch (e) {} }
+  abrir();
+  if (migrar) toast(`Se han pasado ${old.patients.length} pacientes de este navegador a la nube (cifrados)`);
+}
+function abrir() {
+  unlocked = true; document.body.classList.remove('locked');
+  view = { tab: 'hoy' }; setStatus('ok'); render();
+}
+async function salir() {
+  if (DEMO) { location.reload(); return; }
+  if (dirty || syncing) { alert('Espera a que termine de guardarse.'); return; }
+  try { await api('/auth/v1/logout', { method: 'POST' }); } catch (e) {}
+  clearSession(); location.reload();
+}
+
+function renderGate() {
+  const app = document.getElementById('app');
+  const err = `<div class="err" id="gerr">${esc(gate.error)}</div>`;
+  const s = gate.screen;
+  let h = '';
+  if (s === 'loading') h = `<div class="empty">Cargando…</div>`;
+  else if (s === 'login') h = `<h2>Acceso</h2><p class="hint">Entra con tu correo y contraseña.</p>
+    <form id="gLogin" class="card">
+      <label>Correo electrónico<input name="email" type="email" autocomplete="username" required></label>
+      <label>Contraseña<input name="password" type="password" autocomplete="current-password" required></label>
+      ${err}<button class="primary">Entrar</button>
+      <button type="button" class="link" data-act="g-recover">¿Has olvidado la contraseña?</button>
+    </form>`;
+  else if (s === 'recover') h = `<h2>Recuperar contraseña</h2><p class="hint">Te enviaremos un enlace para crear una contraseña nueva.</p>
+    <form id="gRecover" class="card">
+      <label>Correo electrónico<input name="email" type="email" required></label>
+      ${err}<button class="primary">Enviar enlace</button>
+      <button type="button" class="link" data-act="g-login">← Volver</button>
+    </form>`;
+  else if (s === 'recover-ok') h = `<div class="card"><h2>Revisa tu correo</h2>
+    <p>Si el correo está registrado, recibirás un enlace para cambiar la contraseña. Ábrelo en este mismo dispositivo.</p>
+    <button class="link" data-act="g-login">← Volver al acceso</button></div>`;
+  else if (s === 'newpass') h = `<h2>Nueva contraseña de acceso</h2>
+    <form id="gNewPass" class="card">
+      <label>Nueva contraseña (mín. 10 caracteres)<input name="p1" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label>Repítela<input name="p2" type="password" autocomplete="new-password" required></label>
+      ${err}<button class="primary">Guardar contraseña</button>
+      <p class="hint">Esto cambia la contraseña para entrar. Tu clave de cifrado de los datos no cambia.</p>
+    </form>`;
+  else if (s === 'clave') h = `<h2>Clave de cifrado</h2><p class="hint">Tus datos están cifrados. Introduce tu clave para abrirlos.</p>
+    <form id="gClave" class="card">
+      <label>Clave de cifrado<input name="clave" type="password" autocomplete="off" required autofocus></label>
+      ${err}<button class="primary">Abrir</button>
+      <button type="button" class="link" data-act="salir">Cerrar sesión (${esc(session && session.email)})</button>
+    </form>`;
+  else if (s === 'crear') h = `<h2>Crea tu clave de cifrado</h2>
+    <form id="gCrear" class="card">
+      <p style="margin:0">Todos los datos de tus pacientes se cifrarán en este dispositivo con esta clave antes de enviarse a la nube.
+      Ni Supabase ni nadie más puede leerlos.</p>
+      <p class="aviso" style="margin:0"><b>Importante:</b> si olvidas esta clave, <b>los datos no se pueden recuperar</b>.
+      Apúntala en un lugar seguro (por ejemplo, un gestor de contraseñas). Usa una distinta de la contraseña de acceso.</p>
+      <label>Clave de cifrado (mín. 10 caracteres)<input name="c1" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label>Repítela<input name="c2" type="password" autocomplete="new-password" required></label>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="ok" required style="width:auto"> La he apuntado en un lugar seguro</label>
+      ${err}<button class="primary">Crear y empezar</button>
+    </form>`;
+  else if (s === 'setup') h = `<div class="card"><h2>Falta preparar la base de datos</h2>
+    <p>Abre Supabase → <b>SQL Editor</b>, pega el contenido de <code>supabase-setup.sql</code> y pulsa <b>Run</b>. Después recarga esta página.</p>
+    <button class="primary" onclick="location.reload()">Recargar</button></div>`;
+  else if (s === 'reintentar') h = `<div class="card"><h2>No se ha podido conectar</h2>${err}
+    <button class="primary" onclick="location.reload()">Reintentar</button></div>`;
+  app.innerHTML = `<div class="gate">${h}</div>`;
+  const f = app.querySelector('input'); if (f) f.focus();
+}
+
+// ======================= Lógica de pacientes =======================
+function visitasOrd(p) { return [...p.visitas].sort(cmpFecha); }
+function ultimaVisita(p) { const v = visitasOrd(p).filter(v => v.fecha <= today()); return v[v.length - 1] || null; }
+function sesionesUsadas(p) { return p.visitas.filter(v => v.cuenta !== false && (!p.fechaInicio || v.fecha >= p.fechaInicio)).length; }
+// Marcadores: {nombre} → nombre de pila (vacío si es un código), {fecha}/{hora} → próxima visita
+function rellenar(texto, p) {
+  const pila = p && /[a-záéíóúñç]/.test(p.nombre || '') ? p.nombre.trim().split(/\s+/)[0] : '';
+  return texto
+    .replace(/\{nombre\}/g, pila)
+    .replace(/\{fecha\}/g, p && p.proximaVisita ? fmtLargo(p.proximaVisita) : '[fecha]')
+    .replace(/\{hora\}/g, p && p.horaVisita ? p.horaVisita : '[hora]')
+    .replace(/ +([,.!?])/g, '$1').replace(/ {2,}/g, ' ');
+}
+const plantillaPorUso = uso => S.plantillas.find(t => t.uso === uso);
+function mensaje(p, tipo) {
+  const t = plantillaPorUso(tipo) || S.plantillas[0];
+  return t ? rellenar(t.texto, p) : '';
+}
+function copiar(texto, el) {
+  navigator.clipboard.writeText(texto).then(() => toast('Mensaje copiado. Pégalo en WhatsApp o en el email.'), () => prompt('Copia el mensaje:', texto));
+}
+function selectorPlantillas(p) {
+  if (!S.plantillas.length) return '';
+  return `<select class="tplpick" data-id="${p ? p.id : ''}" style="width:auto" title="Copiar otra plantilla">
+    <option value="">📋 Otra plantilla…</option>
+    ${S.plantillas.map(t => `<option value="${t.id}">${esc(t.titulo)}</option>`).join('')}</select>`;
+}
+
+// Avisos para no guardar datos que identifiquen al paciente
+function datoIdentificativo(...txts) {
+  const t = txts.join(' ');
+  if (/[\w.+-]+@[\w-]+\.\w+/.test(t)) return 'un email';
+  if (/(?:\+?\d[\s.-]?){9,}/.test(t)) return 'un número de teléfono';
+  if (/\b\d{8}[A-Za-z]\b|\b[XYZxyz]\d{7}[A-Za-z]\b/.test(t)) return 'un DNI/NIE';
+  return null;
+}
+const pareceNombreCompleto = s => s.trim().split(/\s+/).filter(w => /^[A-ZÁÉÍÓÚÑÇ][a-záéíóúñçàèòïü]{2,}$/.test(w)).length >= 2;
+function okPrivacidad(...txts) {
+  const x = datoIdentificativo(...txts);
+  return !x || confirm(`Parece que has escrito ${x}. Para proteger los datos, no guardes nada que identifique al paciente.\n\n¿Guardar de todos modos?`);
+}
+
+const CANALES = { whatsapp: '💬 WhatsApp', email: '✉️ Email', llamada: '📞 Llamada', presencial: '🤝 En persona', nota: '📝 Nota' };
+function camposReglas(r, canal) {
+  const o = (val, l, cur) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${l}</option>`;
+  const num = k => esc(r[k] ?? '');
+  return `
+    <label>Ver al paciente cada … días<input name="frecuenciaDias" type="number" min="1" value="${num('frecuenciaDias')}" placeholder="Ej. 15, 30…"></label>
+    <label>Mensaje de seguimiento<select name="seguimientoModo">
+      ${o('tras', 'Una vez tras cada visita', r.seguimientoModo)}${o('cada', 'Repetido periódicamente', r.seguimientoModo)}${o('no', 'No enviar', r.seguimientoModo)}</select></label>
+    <label>Mensaje a los / cada … días<input name="seguimientoDias" type="number" min="1" value="${num('seguimientoDias')}"></label>
+    <label>Contacto preferido<select name="canal">${['whatsapp', 'email', 'llamada'].map(c => o(c, CANALES[c], canal)).join('')}</select></label>
+    <label>Avisar si pasan … días sin visita<input name="inactividadDias" type="number" min="1" value="${num('inactividadDias')}" placeholder="vacío = no avisar"></label>
+    <label class="check"><input type="checkbox" name="avisarSinProxima" ${r.avisarSinProxima !== false ? 'checked' : ''}> Avisarme si no tengo apuntada la próxima visita</label>`;
+}
+const numOrNull = v => v ? Number(v) : null;
+const leerReglas = d => ({ frecuenciaDias: numOrNull(d.frecuenciaDias), seguimientoModo: d.seguimientoModo,
+  seguimientoDias: numOrNull(d.seguimientoDias), inactividadDias: numOrNull(d.inactividadDias), avisarSinProxima: !!d.avisarSinProxima });
+
+function clinicasTodas() {
+  return [...new Set([...S.clinicas, ...S.patients.map(p => p.clinica)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+}
+const pasaClinica = p => !filtro.clinica || (filtro.clinica === '__sin' ? !p.clinica : p.clinica === filtro.clinica);
+function selectorClinica() {
+  const cs = clinicasTodas();
+  if (filtro.clinica && filtro.clinica !== '__sin' && !cs.includes(filtro.clinica)) filtro.clinica = '';
+  return `<select id="fClinica" style="width:auto" title="Filtrar por clínica">
+    <option value="">🏥 Todas las clínicas</option>
+    ${cs.map(c => `<option value="${esc(c)}" ${filtro.clinica === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+    <option value="__sin" ${filtro.clinica === '__sin' ? 'selected' : ''}>Sin clínica asignada</option>
+    <option value="__gestionar">➕ Añadir o gestionar clínicas…</option></select>`;
+}
+function opcionesClinica(actual) {
+  return `<option value="">— Sin clínica —</option>` +
+    clinicasTodas().map(c => `<option value="${esc(c)}" ${c === actual ? 'selected' : ''}>${esc(c)}</option>`).join('') +
+    `<option value="__nueva">➕ Nueva clínica…</option>`;
+}
+const tagClinica = p => p && p.clinica ? `<span class="tag b">${esc(p.clinica)}</span>` : '';
+
+function alertas() {
+  const t = today(), limite = addDays(t, 7), out = [];
+  for (const p of S.patients) {
+    if (p.estado === 'alta' || !pasaClinica(p)) continue;
+    const h = p.hechos, uv = ultimaVisita(p), r = p.reglas;
+    if (r.seguimientoDias && r.seguimientoModo === 'cada') {
+      const base = [uv && uv.fecha, p.ultimoMensaje, p.fechaAlta].filter(Boolean).sort().pop();
+      if (base) out.push({ p, tipo: 'seg', fecha: addDays(base, r.seguimientoDias), titulo: 'Enviar mensaje de seguimiento',
+        detalle: `Cada ${r.seguimientoDias} días · último contacto: ${fmt(p.ultimoMensaje || null)}` });
+    } else if (r.seguimientoDias && r.seguimientoModo !== 'no' && uv && !h['seg-' + uv.id] && !(p.ultimoMensaje && p.ultimoMensaje >= uv.fecha)) {
+      out.push({ p, tipo: 'seg', fecha: addDays(uv.fecha, r.seguimientoDias),
+        titulo: 'Enviar mensaje de seguimiento', detalle: `${r.seguimientoDias} días después de la visita del ${fmt(uv.fecha)}` });
+    }
+    if (p.estado === 'activo' && r.inactividadDias && !(p.proximaVisita && p.proximaVisita >= t)) {
+      const base = uv ? uv.fecha : (p.fechaInicio || p.fechaAlta);
+      const k = 'inact-' + (uv ? uv.id : 'ini');
+      if (base && !h[k]) {
+        const due = addDays(base, r.inactividadDias);
+        out.push({ p, k, tipo: 'inact', fecha: due,
+          titulo: due <= t ? `Lleva ${daysBetween(base, t)} días sin visita` : `Llegará a ${r.inactividadDias} días sin visita`,
+          detalle: `Última visita: ${fmt(uv ? uv.fecha : null)} · sin próxima revisión programada` });
+      }
+    }
+    const porRegistrar = p.proximaVisita && p.proximaVisita < t && !p.visitas.some(v => v.fecha >= p.proximaVisita);
+    if (p.estado === 'activo' && r.avisarSinProxima !== false && uv && !(p.proximaVisita && p.proximaVisita >= t) && !porRegistrar && !h['sinprox-' + uv.id]) {
+      const toca = r.frecuenciaDias ? addDays(uv.fecha, r.frecuenciaDias) : null;
+      out.push({ p, k: 'sinprox-' + uv.id, tipo: 'sinprox', fecha: uv.fecha, sugerida: toca && toca > t ? toca : addDays(t, 7),
+        titulo: 'Falta apuntar la próxima visita',
+        detalle: `Último seguimiento: ${fmt(uv.fecha)}` + (toca ? ` · según su plan (cada ${r.frecuenciaDias} días) le toca ${toca < t ? 'desde el' : 'el'} ${fmt(toca)}` : '') });
+    }
+    if (p.proximaVisita && !p.visitas.some(v => v.fecha >= p.proximaVisita)) {
+      if (p.proximaVisita < t) out.push({ p, tipo: 'registrar', fecha: p.proximaVisita,
+        titulo: '¿Registrar el seguimiento?', detalle: `Tenía revisión el ${fmt(p.proximaVisita)} y aún no está registrada` });
+      else out.push({ p, tipo: 'cita', fecha: p.proximaVisita, titulo: 'Revisión programada',
+        detalle: fmtCorto(p.proximaVisita) + (p.horaVisita ? ' · ' + p.horaVisita : '') });
+    }
+    if (Number(p.sesionesContratadas) > 0) {
+      const u = sesionesUsadas(p), quedan = p.sesionesContratadas - u, k = `bono-${p.fechaInicio || ''}-${u}`;
+      if (quedan <= 1 && !h[k]) out.push({ p, k, tipo: 'bono', fecha: t,
+        titulo: quedan <= 0 ? 'Plan/bono agotado: ofrecer renovación' : 'Le queda 1 sesión del plan',
+        detalle: `${u} de ${p.sesionesContratadas} sesiones usadas · ${p.servicio || 'plan'}` });
+    }
+    if (p.fechaFinPlan) {
+      const k = 'fin-' + p.fechaFinPlan;
+      if (!h[k] && p.fechaFinPlan <= limite) out.push({ p, k, tipo: 'fin', fecha: p.fechaFinPlan,
+        titulo: p.fechaFinPlan < t ? 'El plan contratado ha terminado' : 'El plan contratado termina pronto',
+        detalle: `${p.servicio || 'Plan'} · fin ${fmt(p.fechaFinPlan)}` });
+    }
+  }
+  for (const tarea of S.tareas) {
+    if (tarea.hecho) continue;
+    const p = tarea.pacienteId ? byId(tarea.pacienteId) : null;
+    if (p && (p.estado === 'alta' || !pasaClinica(p))) continue;
+    if (!p && filtro.clinica) continue;
+    out.push({ p, tarea, tipo: 'tarea', fecha: tarea.fecha, titulo: tarea.texto, detalle: p ? 'Tarea' : 'Tarea general' });
+  }
+  return out.filter(a => a.fecha <= limite).sort(cmpFecha);
+}
+
+function nuevoPaciente() {
+  return { id: null, nombre: '', clinica: filtro.clinica && filtro.clinica !== '__sin' ? filtro.clinica : '', fechaAlta: today(), objetivo: '', servicio: '', sesionesContratadas: '',
+    fechaInicio: today(), fechaFinPlan: '', importe: '', pago: 'pagado', estado: 'activo', notas: '', proximaVisita: '', horaVisita: '',
+    canal: S.canalDefecto || 'whatsapp', ultimoMensaje: '', anotaciones: [],
+    reglas: { ...S.reglasDefecto }, visitas: [], hechos: {} };
+}
+
+// ======================= Vistas =======================
+function render() {
+  if (!unlocked) return renderGate();
+  const n = alertas().filter(a => a.fecha <= today() && a.tipo !== 'cita').length;
+  document.querySelectorAll('#nav button').forEach(b => {
+    b.classList.toggle('on', b.dataset.go === view.tab || (view.tab === 'ficha' && b.dataset.go === 'pacientes'));
+    if (b.dataset.go === 'hoy') b.innerHTML = 'Hoy' + (n ? ` <span class="count">${n}</span>` : '');
+  });
+  const app = document.getElementById('app');
+  const R = { hoy: renderHoy, pacientes: renderLista, agenda: renderAgenda, plantillas: renderPlantillas, ajustes: renderAjustes };
+  app.innerHTML = view.tab === 'ficha' ? renderFicha(view.id) : R[view.tab]();
+}
+
+function renderHoy() {
+  const t = today(), all = alertas();
+  const grupos = [
+    ['atrasado', 'Pendiente (fecha pasada)', all.filter(a => a.fecha < t && a.tipo !== 'cita')],
+    ['hoy', 'Hoy', all.filter(a => a.fecha === t)],
+    ['prox', 'Próximos 7 días', all.filter(a => a.fecha > t)],
+  ];
+  const activos = S.patients.filter(p => p.estado === 'activo' && pasaClinica(p)).length;
+  const revisiones = S.patients.filter(p => p.estado !== 'alta' && pasaClinica(p) && p.proximaVisita >= t && p.proximaVisita <= addDays(t, 7)).length;
+  const tareasPend = all.filter(a => a.tipo === 'tarea' && a.fecha <= t).length;
+  let h = '';
+  const db = S.lastBackup ? daysBetween(S.lastBackup, t) : null;
+  if (S.patients.length && (db === null || db > 14)) {
+    h += `<div class="banner">💾 ${db === null ? 'Aún no has descargado ninguna copia de seguridad.' : `Tu última copia de seguridad es de hace ${db} días.`}
+      El plan gratuito de Supabase no hace copias automáticas. <button class="link" data-act="export">Descargar copia cifrada</button></div>`;
+  }
+  h += `<div class="row" style="margin-bottom:16px"><h2 style="text-transform:capitalize;margin:0">${fmtLargo(t)}</h2><span class="spacer"></span>${selectorClinica()}</div>
+  <div class="stats">
+    <div class="stat"><b>${activos}</b><span>pacientes activos</span></div>
+    <div class="stat"><b>${revisiones}</b><span>revisiones esta semana</span></div>
+    <div class="stat"><b>${grupos[0][2].length + grupos[1][2].length}</b><span>avisos pendientes</span></div>
+    <div class="stat"><b>${tareasPend}</b><span>tareas para hoy o atrasadas</span></div>
+  </div>`;
+  if (!S.patients.length && !S.tareas.length) {
+    return h + `<div class="card empty"><b>Empieza añadiendo tu primer paciente.</b><br>
+      En su ficha podrás anotar qué tiene contratado, registrar cada seguimiento y decidir cada cuánto quieres que te avise.<br><br>
+      <button class="primary" data-act="nuevo">+ Añadir paciente</button>
+      <button data-act="demo">Cargar ejemplos ficticios para probar</button></div>`;
+  }
+  let algo = false;
+  for (const [cls, titulo, items] of grupos) {
+    if (!items.length) continue;
+    algo = true;
+    h += `<h3>${titulo}</h3>` + items.map(a => renderAlerta(a, cls)).join('');
+  }
+  if (!algo) h += `<div class="card empty">✅ Todo al día. No hay mensajes ni avisos pendientes esta semana.</div>`;
+  return h;
+}
+
+function renderAlerta(a, cls) {
+  const p = a.p;
+  const tagMap = { seg: ['Mensaje', 'o'], inact: ['Inactividad', 'r'], registrar: ['Revisión', 'b'], cita: ['Revisión', 'b'],
+    bono: ['Plan', ''], fin: ['Plan', ''], tarea: ['Tarea', 'g'], sinprox: ['Agenda', 'b'] };
+  const [tag, tc] = tagMap[a.tipo];
+  let acts = '';
+  if (a.tipo === 'seg' || a.tipo === 'inact') {
+    acts += `<button data-act="copiar" data-id="${p.id}" data-tipo="${a.tipo}">Copiar texto</button>${selectorPlantillas(p)}
+      <button class="primary" data-act="msghecho" data-id="${p.id}" data-tipo="${a.tipo}" data-k="${a.k || ''}">✓ Enviado por ${(CANALES[p.canal] || CANALES.whatsapp).slice(2).trim()}</button>`;
+  }
+  if (a.tipo === 'sinprox') acts += `<input type="date" id="prog-${p.id}" value="${a.sugerida}" style="width:auto">
+    <button class="primary" data-act="programar" data-id="${p.id}">Apuntar visita</button>
+    <button data-act="hecho" data-id="${p.id}" data-k="${a.k}" title="No volver a avisar hasta su próxima visita">No hace falta</button>`;
+  if (a.tipo === 'registrar') acts += `<button class="primary" data-act="ficha" data-id="${p.id}" data-foco="fv">Registrar seguimiento</button>
+    <button data-act="nocita" data-id="${p.id}">No vino</button>`;
+  if (a.k && !['inact', 'sinprox'].includes(a.tipo)) acts += `<button data-act="hecho" data-id="${p.id}" data-k="${a.k}">✓ Hecho</button>`;
+  if (a.tarea) acts += `<button data-act="tareahecha" data-tid="${a.tarea.id}">✓ Hecho</button>`;
+  if (p) acts += `<button data-act="ficha" data-id="${p.id}">Ficha</button>`;
+  return `<div class="card alert ${cls}">
+    <div>
+      <div class="row"><span class="who">${p ? esc(p.nombre) : 'General'}</span><span class="tag ${tc}">${tag}</span>${filtro.clinica ? '' : tagClinica(p)}
+        <span class="hint">${a.tipo === 'bono' ? '' : relativo(a.fecha)}</span></div>
+      <div class="what">${esc(a.titulo)}</div>
+      <div class="hint">${esc(a.detalle)}</div>
+    </div>
+    <div class="acts">${acts}</div>
+  </div>`;
+}
+
+function renderLista() {
+  const t = today(), q = filtro.q.toLowerCase();
+  const list = S.patients
+    .filter(p => filtro.estado === 'todos' || (filtro.estado === 'activos' ? p.estado !== 'alta' : p.estado === filtro.estado))
+    .filter(pasaClinica)
+    .filter(p => !q || [p.nombre, p.servicio, p.objetivo, p.clinica].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const al = alertas().filter(a => a.fecha <= t && a.tipo !== 'cita');
+  let h = `<div class="row" style="margin-bottom:14px">
+    <h2 style="margin:0">Pacientes</h2><span class="spacer"></span>
+    <button class="primary" data-act="nuevo">+ Nuevo paciente</button></div>
+  <div class="row" style="margin-bottom:14px">
+    <input id="q" placeholder="Buscar por nombre, objetivo, servicio, clínica…" value="${esc(filtro.q)}" style="flex:1;min-width:200px">
+    <select id="fEstado" style="width:auto">
+      ${[['activos', 'Activos y en pausa'], ['activo', 'Solo activos'], ['pausado', 'En pausa'], ['alta', 'De alta'], ['todos', 'Todos']]
+        .map(([v, l]) => `<option value="${v}" ${filtro.estado === v ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>${selectorClinica()}</div>`;
+  if (!S.patients.length) return h + `<div class="card empty">Aún no tienes pacientes. Pulsa <b>+ Nuevo paciente</b> para crear la primera ficha.</div>`;
+  if (!list.length) return h + `<div class="card empty">Ningún paciente coincide con la búsqueda o el filtro.</div>`;
+  h += `<div class="card" style="padding:4px 12px"><table><thead><tr>
+    <th>Paciente</th><th class="hide-m">Contratado</th><th>Último seguimiento</th><th class="hide-m">Próxima revisión</th><th>Avisos</th>
+  </tr></thead><tbody>`;
+  for (const p of list) {
+    const uv = ultimaVisita(p), u = sesionesUsadas(p), c = Number(p.sesionesContratadas) || 0;
+    const n = al.filter(a => a.p === p).length;
+    const estadoTag = p.estado === 'pausado' ? ' <span class="tag g">pausa</span>' : p.estado === 'alta' ? ' <span class="tag g">alta</span>' : '';
+    const pagoTag = p.pago && p.pago !== 'pagado' ? ` <span class="tag r">${p.pago === 'parcial' ? 'pago parcial' : 'pendiente pago'}</span>` : '';
+    h += `<tr data-act="ficha" data-id="${p.id}">
+      <td><b>${esc(p.nombre)}</b> <span title="Contacto preferido: ${CANALES[p.canal] || ''}">${(CANALES[p.canal] || '').split(' ')[0]}</span>${estadoTag} ${filtro.clinica ? '' : tagClinica(p)}<div class="hint">${esc(p.objetivo)}</div></td>
+      <td class="hide-m">${esc(p.servicio) || '—'}${pagoTag}
+        ${c ? `<div class="hint">${u}/${c} sesiones</div><div class="bar"><i style="width:${Math.min(100, u / c * 100)}%"></i></div>` : ''}</td>
+      <td>${uv ? fmt(uv.fecha) + `<div class="hint">${relativo(uv.fecha)}</div>` : '—'}</td>
+      <td class="hide-m">${p.proximaVisita && p.proximaVisita >= t ? fmtCorto(p.proximaVisita) + (p.horaVisita ? ' · ' + esc(p.horaVisita) : '') : '—'}</td>
+      <td>${n ? `<span class="tag o">${n} pendiente${n > 1 ? 's' : ''}</span>` : '<span class="hint">—</span>'}</td></tr>`;
+  }
+  return h + '</tbody></table></div>';
+}
+
+function opcionesPacientes(sel) {
+  return `<option value="">— General (sin paciente) —</option>` + S.patients.filter(p => p.estado !== 'alta')
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    .map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('');
+}
+function formTarea(pacienteId) {
+  return `<form id="ft" class="row" data-pid="${pacienteId || ''}" style="margin:12px 0;align-items:flex-end">
+    <label style="width:150px">Fecha<input name="fecha" type="date" value="${addDays(today(), pacienteId ? 7 : 0)}" required></label>
+    <label style="flex:1;min-width:200px">Qué hay que hacer<input name="texto" required placeholder="Ej. enviar receta, pedir analítica…"></label>
+    ${pacienteId ? '' : `<label style="width:220px">Paciente<select name="pacienteId">${opcionesPacientes('')}</select></label>`}
+    <button class="primary">Añadir tarea</button>
+  </form>`;
+}
+function filaTarea(t, conPaciente) {
+  const p = t.pacienteId ? byId(t.pacienteId) : null;
+  return `<div class="item">
+    <input type="checkbox" data-act="toggletarea" data-tid="${t.id}" ${t.hecho ? 'checked' : ''} style="width:auto" title="Marcar como completada">
+    <div class="txt" style="${t.hecho ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t.texto)}
+      ${conPaciente && p ? ` · <button class="link" data-act="ficha" data-id="${p.id}">${esc(p.nombre)}</button>` : ''}
+      ${!t.hecho && t.fecha < today() ? ' <span class="tag r">atrasada</span>' : ''}</div>
+    <span class="hint">${fmt(t.fecha)}</span>
+    <button class="link danger" data-act="deltarea" data-tid="${t.id}" title="Eliminar">✕</button></div>`;
+}
+
+function renderAgenda() {
+  const t = today(), hasta = addDays(t, 30);
+  const items = [];
+  for (const p of S.patients) if (p.estado !== 'alta' && pasaClinica(p) && p.proximaVisita && p.proximaVisita >= t && p.proximaVisita <= hasta)
+    items.push({ fecha: p.proximaVisita, cita: true, p });
+  for (const x of S.tareas) if (!x.hecho && x.fecha <= hasta && (x.pacienteId ? (byId(x.pacienteId) && pasaClinica(byId(x.pacienteId))) : !filtro.clinica)) items.push({ fecha: x.fecha < t ? t : x.fecha, tarea: x });
+  items.sort((a, b) => cmpFecha(a, b) || (a.cita ? -1 : 1) || ((a.p && a.p.horaVisita) || '').localeCompare((b.p && b.p.horaVisita) || ''));
+
+  let h = `<div class="row" style="margin-bottom:16px"><h2 style="margin:0">Agenda y tareas</h2><span class="spacer"></span>${selectorClinica()}</div>
+  <div class="card"><b>Nueva tarea o recordatorio</b>${formTarea(null)}
+    <div class="hint">Las revisiones se programan desde la ficha de cada paciente (campo «Próxima revisión»).</div></div>
+  <h3>Próximos 30 días</h3>`;
+  if (!items.length) h += `<div class="card empty">No hay revisiones ni tareas programadas para los próximos 30 días.</div>`;
+  else {
+    h += '<div class="card">';
+    let dia = null;
+    for (const it of items) {
+      if (it.fecha !== dia) { dia = it.fecha; h += `<div class="day" style="text-transform:capitalize">${dia === t ? 'Hoy' : fmtLargo(dia)}</div>`; }
+      if (it.cita) h += `<div class="item"><span class="tag b">Revisión</span>
+        <div class="txt"><button class="link" data-act="ficha" data-id="${it.p.id}"><b>${esc(it.p.nombre)}</b></button>
+        ${it.p.horaVisita ? ' · ' + esc(it.p.horaVisita) : ''} ${filtro.clinica ? '' : tagClinica(it.p)}</div></div>`;
+      else h += filaTarea(it.tarea, true);
+    }
+    h += '</div>';
+  }
+  const hechas = S.tareas.filter(x => x.hecho).sort(cmpFecha).reverse().slice(0, 15);
+  if (hechas.length) h += `<h3>Completadas recientemente</h3><div class="card">${hechas.map(x => filaTarea(x, true)).join('')}</div>`;
+  return h;
+}
+
+function renderFicha(id) {
+  const isNew = !id;
+  const p = isNew ? nuevoPaciente() : byId(id);
+  if (!p) { view = { tab: 'pacientes' }; return renderLista(); }
+  const v = k => esc(p[k] ?? '');
+  const sel = (k, opts) => opts.map(([val, l]) => `<option value="${val}" ${p[k] === val ? 'selected' : ''}>${l}</option>`).join('');
+  const u = sesionesUsadas(p), c = Number(p.sesionesContratadas) || 0;
+
+  let h = `<button class="link" data-go="pacientes">← Volver a pacientes</button>
+  <div class="row" style="margin:10px 0 16px"><h2 style="margin:0">${isNew ? 'Nuevo paciente' : esc(p.nombre)}</h2>${isNew ? '' : tagClinica(p)}${isNew ? '' : '<span class="spacer"></span>' + selectorPlantillas(p)}
+    ${!isNew && c ? `<span class="tag">${u} de ${c} sesiones</span>` : ''}</div>
+  <form id="fp" class="card grid" data-id="${p.id || ''}">
+    <div class="aviso">${AVISO}</div>
+    <label>Nombre e iniciales <span class="hint">(opcional)</span><input name="nombre" maxlength="30" value="${v('nombre')}" placeholder="Ej. María G. R."></label>
+    <label>Clínica<select name="clinica">${opcionesClinica(p.clinica)}</select></label>
+    <label>Fecha de alta<input name="fechaAlta" type="date" value="${v('fechaAlta')}"></label>
+    <div class="full hint" style="margin-top:-6px">Nombre de pila y solo las iniciales de los apellidos. Si lo dejas vacío se le asigna un código (P-001…). Los datos de contacto se consultan en el sistema de la clínica.</div>
+    <label>Estado del seguimiento<select name="estado">${sel('estado', [['activo', 'Activo'], ['pausado', 'En pausa'], ['alta', 'Finalizado / de alta']])}</select></label>
+    <label class="full">Objetivo general<input name="objetivo" value="${v('objetivo')}" placeholder="Ej. mejorar hábitos de desayuno, rendimiento deportivo…"></label>
+
+    <div class="fieldset">Plan contratado</div>
+    <label>Servicio / plan<input name="servicio" list="servicios" value="${v('servicio')}" placeholder="Ej. Bono 5 visitas"></label>
+    <label>Nº de sesiones incluidas<input name="sesionesContratadas" type="number" min="0" value="${v('sesionesContratadas')}" placeholder="vacío = sin límite"></label>
+    <label>Inicio del plan<input name="fechaInicio" type="date" value="${v('fechaInicio')}"></label>
+    <label>Fin / caducidad del plan<input name="fechaFinPlan" type="date" value="${v('fechaFinPlan')}"></label>
+    <label>Importe<input name="importe" value="${v('importe')}" placeholder="Ej. 180 €"></label>
+    <label>Pago<select name="pago">${sel('pago', [['pagado', 'Pagado'], ['parcial', 'Pago parcial'], ['pendiente', 'Pendiente']])}</select></label>
+
+    <div class="fieldset">Plan de seguimiento</div>
+    <label>Próxima visita<input name="proximaVisita" type="date" value="${v('proximaVisita')}"></label>
+    <label>Hora<input name="horaVisita" type="time" value="${v('horaVisita')}"></label>
+    ${camposReglas(p.reglas, p.canal)}
+
+    <label class="full">Notas generales<textarea name="notas" placeholder="Preferencias, horarios, contexto…">${v('notas')}</textarea></label>
+    <div class="full row">
+      <button class="primary" type="submit">${isNew ? 'Crear paciente' : 'Guardar cambios'}</button>
+      ${!isNew && c && u >= c ? `<button type="button" data-act="renovar" data-id="${p.id}">Renovar plan desde hoy</button>` : ''}
+      <span class="spacer"></span>
+      ${!isNew ? `<button type="button" class="danger" data-act="borrar" data-id="${p.id}">Eliminar paciente</button>` : ''}
+    </div>
+  </form>
+  <datalist id="servicios">${['Primera visita', 'Visita suelta', 'Bono 3 visitas', 'Bono 5 visitas', 'Plan trimestral', 'Seguimiento mensual', 'Online']
+    .map(s => `<option value="${s}">`).join('')}</datalist>`;
+  if (isNew) return h;
+
+  const vs = visitasOrd(p).reverse();
+  const fechaDef = p.proximaVisita && p.proximaVisita <= today() ? p.proximaVisita : today();
+  const proxDef = p.reglas.frecuenciaDias ? addDays(fechaDef, p.reglas.frecuenciaDias) : '';
+  const campo = (lbl, val) => val ? `<p><b>${lbl}:</b> ${esc(val)}</p>` : '';
+  h += `<div class="card" id="cardfv"><div class="row"><b>Seguimientos</b><span class="hint">${p.visitas.length} registrados</span></div>
+    <form id="fv" class="grid" data-id="${p.id}" style="margin:12px 0 16px">
+      <div class="aviso">${AVISO}</div>
+      <label>Fecha<input name="fecha" type="date" value="${fechaDef}" required></label>
+      <label>Tipo<select name="tipo"><option>Seguimiento</option><option>Primera visita</option><option>Online</option><option>Revisión</option><option>Otra</option></select></label>
+      <label class="full">Hábitos trabajados<textarea name="habitos" placeholder="Qué hábitos se han trabajado en esta sesión"></textarea></label>
+      <label class="full">Avances<textarea name="avances" placeholder="Qué ha mejorado, qué ha costado"></textarea></label>
+      <label class="full">Acuerdos<textarea name="acuerdos" placeholder="Qué se compromete a hacer hasta la próxima revisión"></textarea></label>
+      <label class="full">Otras notas<input name="notas"></label>
+      <label>Próxima visita${proxDef ? ` <span class="hint">(cada ${p.reglas.frecuenciaDias} días)</span>` : ''}<input name="proxima" type="date" value="${proxDef}"></label>
+      <label>Hora<input name="hora" type="time"></label>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--ink);align-self:end;padding-bottom:9px"><input type="checkbox" name="cuenta" checked style="width:auto"> Descuenta del plan</label>
+      <div class="full"><button class="primary">Guardar seguimiento</button></div>
+    </form>
+    ${vs.length ? vs.map(x => `<div class="visit"><div class="d">${fmt(x.fecha)}<div class="hint">${esc(x.tipo)}${x.cuenta === false ? ' · no cuenta' : ''}</div></div>
+      <div class="n">${campo('Hábitos trabajados', x.habitos)}${campo('Avances', x.avances)}${campo('Acuerdos', x.acuerdos)}${campo('Notas', x.notas)}
+        ${!x.habitos && !x.avances && !x.acuerdos && !x.notas ? '<span class="hint">Sin notas</span>' : ''}</div>
+      <button class="link danger" data-act="delvisita" data-id="${p.id}" data-vid="${x.id}" title="Eliminar seguimiento">✕</button></div>`).join('')
+      : '<div class="hint">Aún no hay seguimientos. Rellena el formulario de arriba después de cada sesión.</div>'}
+  </div>`;
+
+  const notas = [...p.anotaciones].sort(cmpFecha).reverse();
+  h += `<div class="card"><b>Anotaciones y contactos</b>
+    <div class="hint">Apunta lo que quieras recordar, o cada vez que contactes con el paciente (y por qué vía). ${AVISO}</div>
+    <form id="fn" class="row" data-id="${p.id}" style="margin:12px 0;align-items:flex-end">
+      <label style="width:150px">Fecha<input name="fecha" type="date" value="${today()}" required></label>
+      <label style="width:170px">Tipo<select name="canal">${Object.entries(CANALES).map(([k, l]) => `<option value="${k}" ${k === 'nota' ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label style="flex:1;min-width:200px">Anotación<input name="texto" required placeholder="Ej. Le envié la receta por WhatsApp; prefiere visitas por la tarde…"></label>
+      <button class="primary">Añadir</button>
+    </form>
+    ${notas.map(n => `<div class="item"><span class="tag ${n.canal === 'nota' ? 'g' : 'b'}">${CANALES[n.canal] || n.canal}</span>
+      <div class="txt">${esc(n.texto)}</div><span class="hint">${fmt(n.fecha)}</span>
+      <button class="link danger" data-act="delnota" data-id="${p.id}" data-nid="${n.id}" title="Eliminar">✕</button></div>`).join('')
+      || '<div class="hint">Aún no hay anotaciones.</div>'}
+  </div>`;
+
+  const tareas = S.tareas.filter(x => x.pacienteId === p.id).sort(cmpFecha);
+  h += `<div class="card"><b>Tareas y recordatorios</b>
+    <div class="hint">Cualquier cosa puntual: "preguntar por la analítica", "enviar receta", "felicitar cumpleaños"…</div>
+    ${formTarea(p.id)}
+    ${tareas.map(x => filaTarea(x, false)).join('')}
+  </div>`;
+  return h;
+}
+
+let editPlantilla = null;   // id de la plantilla en edición ('nueva' para crear)
+function renderPlantillas() {
+  const usoTxt = { seg: 'Por defecto: seguimiento tras visita', inact: 'Por defecto: retomar seguimiento' };
+  const ed = editPlantilla && editPlantilla !== 'nueva' ? S.plantillas.find(t => t.id === editPlantilla) : null;
+  const form = editPlantilla ? `<form id="fpl" class="card grid" data-id="${ed ? ed.id : ''}">
+      <div class="fieldset" style="border:0;margin:0;padding:0">${ed ? 'Editar plantilla' : 'Nueva plantilla'}</div>
+      <label>Título<input name="titulo" required value="${esc(ed ? ed.titulo : '')}" placeholder="Ej. Recordatorio de visita"></label>
+      <label>Usar por defecto en avisos<select name="uso">
+        <option value="">— No —</option>
+        <option value="seg" ${ed && ed.uso === 'seg' ? 'selected' : ''}>${usoTxt.seg}</option>
+        <option value="inact" ${ed && ed.uso === 'inact' ? 'selected' : ''}>${usoTxt.inact}</option></select></label>
+      <label class="full">Texto<textarea name="texto" required style="min-height:110px">${esc(ed ? ed.texto : '')}</textarea></label>
+      <div class="full hint">Puedes usar <b>{nombre}</b> (nombre de pila), <b>{fecha}</b> y <b>{hora}</b> (de la próxima visita). Se rellenan solos al copiar el mensaje desde un aviso o una ficha.</div>
+      <div class="full row"><button class="primary">Guardar plantilla</button><button type="button" data-act="tplcancel">Cancelar</button></div>
+    </form>` : '';
+  return `<div class="row" style="margin-bottom:16px"><h2 style="margin:0">Plantillas de mensajes</h2><span class="spacer"></span>
+      ${editPlantilla ? '' : '<button class="primary" data-act="tplnueva">+ Nueva plantilla</button>'}</div>
+    <p class="hint" style="margin-top:-8px">Escribe aquí los mensajes que envías a menudo. Desde los avisos y las fichas podrás copiarlos con el nombre y la fecha ya puestos.</p>
+    ${form}
+    ${S.plantillas.length ? S.plantillas.map(t => `<div class="card">
+      <div class="row"><b>${esc(t.titulo)}</b>${t.uso ? `<span class="tag o">${usoTxt[t.uso]}</span>` : ''}<span class="spacer"></span>
+        <button data-act="tplcopiar" data-tid="${t.id}">📋 Copiar</button>
+        <button data-act="tpleditar" data-tid="${t.id}">Editar</button>
+        <button class="link danger" data-act="tplborrar" data-tid="${t.id}" title="Eliminar">✕</button></div>
+      <p style="white-space:pre-wrap;margin:8px 0 0;color:#3d4448">${esc(t.texto)}</p></div>`).join('')
+      : '<div class="card empty">Aún no tienes plantillas. Pulsa <b>+ Nueva plantilla</b> para crear la primera.</div>'}`;
+}
+
+function renderAjustes() {
+  const r = S.reglasDefecto;
+  const demos = S.patients.filter(p => p.demo).length;
+  return `<h2>Ajustes</h2>
+  <form id="fa" class="card grid">
+    <div class="fieldset" style="border:0;margin:0;padding:0">Valores por defecto para pacientes nuevos</div>
+    <div class="full hint">Los textos de los mensajes se editan en la pestaña <button type="button" class="link" data-go="plantillas">Plantillas</button>.</div>
+    ${camposReglas(r, S.canalDefecto)}
+    <div class="fieldset">Seguridad</div>
+    <label>Bloquear tras … minutos sin uso<input name="bloqueoMin" type="number" min="1" max="240" value="${esc(S.bloqueoMin)}"></label>
+    <div class="full"><button class="primary">Guardar ajustes</button></div>
+  </form>
+
+  <div class="card">
+    <b>Clínicas y centros</b>
+    <p class="hint">Se usan para clasificar pacientes y filtrar Hoy, Pacientes y Agenda. También puedes escribir una nueva directamente en la ficha del paciente.</p>
+    ${clinicasTodas().map(c => { const n = S.patients.filter(p => p.clinica === c).length; return `<div class="item">
+      <div class="txt"><b>${esc(c)}</b> <span class="hint">${n} paciente${n === 1 ? '' : 's'}</span></div>
+      ${n ? `<button data-act="expclinica" data-c="${esc(c)}" title="Descargar en Excel (CSV) los datos de sus pacientes">⬇️ Exportar sus pacientes</button>
+      <button class="danger" data-act="borrarclinica" data-c="${esc(c)}">Borrar sus pacientes</button>` : ''}
+      <button data-act="renclinica" data-c="${esc(c)}">Renombrar</button>
+      <button class="link danger" data-act="delclinica" data-c="${esc(c)}" title="Eliminar">✕</button></div>`; }).join('') || '<div class="hint">Aún no hay clínicas.</div>'}
+    <form id="fc" class="row" style="margin-top:12px">
+      <input name="nombre" placeholder="Nombre de la clínica o centro" required style="flex:1;min-width:200px">
+      <button class="primary">Añadir clínica</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <b>Copia de seguridad</b>
+    <p class="hint">El plan gratuito de Supabase no guarda copias automáticas. Descarga una de vez en cuando:
+    el archivo va <b>cifrado con tu clave</b>, así que puedes guardarlo en tu ordenador o en la nube.
+    ${S.lastBackup ? `<br>Última copia: <b>${fmt(S.lastBackup)}</b>.` : ''}</p>
+    <div class="row">
+      <button class="primary" data-act="export">Descargar copia cifrada</button>
+      <button data-act="import">Restaurar desde copia…</button>
+      <input type="file" id="fileImp" accept=".json,application/json" hidden>
+    </div>
+  </div>
+
+  <form id="fk" class="card grid">
+    <div class="fieldset" style="border:0;margin:0;padding:0">Cambiar la clave de cifrado</div>
+    <label>Nueva clave (mín. 10 caracteres)<input name="c1" type="password" minlength="10" autocomplete="new-password" required></label>
+    <label>Repítela<input name="c2" type="password" autocomplete="new-password" required></label>
+    <div class="full hint">Los otros dispositivos te pedirán la clave nueva. Las copias descargadas antes seguirán necesitando la clave antigua.</div>
+    <div class="full"><button>Cambiar clave</button></div>
+  </form>
+
+  <div class="card">
+    <b>Cuenta</b>
+    <p class="hint">Sesión iniciada como ${esc(session.email)}.</p>
+    <div class="row">
+      <button data-act="salir">Cerrar sesión en este dispositivo</button>
+      ${demos ? `<button data-act="borrardemo">Eliminar los ${demos} pacientes de ejemplo</button>` : ''}
+      <span class="spacer"></span>
+      <button class="danger" data-act="borrartodo">Borrar todos los datos</button>
+    </div>
+  </div>`;
+}
+
+// ======================= Eventos =======================
+document.addEventListener('click', async e => {
+  const go = e.target.closest('[data-go]');
+  if (go && unlocked) { view = { tab: go.dataset.go }; render(); scrollTo(0, 0); return; }
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act, p = el.dataset.id ? byId(el.dataset.id) : null;
+  const tarea = el.dataset.tid ? S.tareas.find(x => x.id === el.dataset.tid) : null;
+  switch (act) {
+    case 'g-recover': showGate('recover'); break;
+    case 'g-login': showGate('login'); break;
+    case 'salir': salir(); break;
+    case 'bloquear': if (dirty || syncing) { toast('Espera a que termine de guardarse'); return; } location.reload(); break;
+    case 'ficha':
+      view = { tab: 'ficha', id: p.id }; render();
+      if (el.dataset.foco) document.getElementById('cardfv').scrollIntoView(); else scrollTo(0, 0);
+      break;
+    case 'nuevo': view = { tab: 'ficha', id: null }; render(); scrollTo(0, 0); break;
+    case 'hecho': p.hechos[el.dataset.k] = today(); save(); break;
+    case 'msghecho': {
+      const canal = p.canal || 'whatsapp';
+      p.ultimoMensaje = today();
+      if (el.dataset.k) p.hechos[el.dataset.k] = today();
+      p.anotaciones.push({ id: uid(), fecha: today(), canal, texto: el.dataset.tipo === 'inact' ? 'Mensaje para retomar el seguimiento' : 'Mensaje de seguimiento' });
+      save(); toast(`Anotado: mensaje enviado por ${CANALES[canal].slice(2).trim()}`); break;
+    }
+    case 'programar': {
+      const f = document.getElementById('prog-' + p.id).value;
+      if (!f) return;
+      p.proximaVisita = f; save(); toast(`Próxima visita apuntada: ${fmtCorto(f)}`); break;
+    }
+    case 'delnota': if (confirm('¿Eliminar esta anotación?')) { p.anotaciones = p.anotaciones.filter(n => n.id !== el.dataset.nid); save(); } break;
+    case 'tareahecha': tarea.hecho = true; save(); break;
+    case 'toggletarea': tarea.hecho = el.checked; save(); break;
+    case 'deltarea': if (confirm('¿Eliminar esta tarea?')) { S.tareas = S.tareas.filter(x => x !== tarea); save(); } break;
+    case 'tplnueva': editPlantilla = 'nueva'; render(); scrollTo(0, 0); break;
+    case 'tpleditar': editPlantilla = el.dataset.tid; render(); scrollTo(0, 0); break;
+    case 'tplcancel': editPlantilla = null; render(); break;
+    case 'tplcopiar': copiar(S.plantillas.find(t => t.id === el.dataset.tid).texto, el); break;
+    case 'tplborrar': {
+      const t = S.plantillas.find(x => x.id === el.dataset.tid);
+      if (confirm(`¿Eliminar la plantilla «${t.titulo}»?`)) { S.plantillas = S.plantillas.filter(x => x !== t); save(); }
+      break;
+    }
+    case 'copiar':
+      copiar(mensaje(p, el.dataset.tipo), el);
+      break;
+    case 'nocita': if (confirm(`¿Quitar la revisión del ${fmt(p.proximaVisita)} de ${p.nombre}?`)) { p.proximaVisita = ''; p.horaVisita = ''; save(); } break;
+    case 'delvisita': if (confirm('¿Eliminar este seguimiento? No se puede deshacer.')) { p.visitas = p.visitas.filter(v => v.id !== el.dataset.vid); save(); } break;
+    case 'renovar': {
+      const n = prompt('¿Cuántas sesiones incluye el nuevo plan?', p.sesionesContratadas || '');
+      if (n === null) return;
+      p.sesionesContratadas = Number(n) || ''; p.fechaInicio = today(); p.fechaFinPlan = ''; p.pago = 'pendiente';
+      save(); toast('Plan renovado'); break;
+    }
+    case 'borrar':
+      if (confirm(`¿Eliminar a ${p.nombre} con todos sus seguimientos y tareas? No se puede deshacer.`)) {
+        S.patients = S.patients.filter(x => x !== p); S.tareas = S.tareas.filter(x => x.pacienteId !== p.id);
+        view = { tab: 'pacientes' }; save(); toast('Paciente eliminado');
+      } break;
+    case 'renclinica': {
+      const viejo = el.dataset.c, nuevo = (prompt('Nuevo nombre para la clínica:', viejo) || '').trim();
+      if (!nuevo || nuevo === viejo) return;
+      S.patients.forEach(x => { if (x.clinica === viejo) x.clinica = nuevo; });
+      S.clinicas = [...new Set(S.clinicas.map(c => c === viejo ? nuevo : c))];
+      if (filtro.clinica === viejo) filtro.clinica = nuevo;
+      save(); break;
+    }
+    case 'expclinica': exportarClinica(el.dataset.c); break;
+    case 'borrarclinica': {
+      const c = el.dataset.c, ps = S.patients.filter(x => x.clinica === c);
+      if (!confirm(`¿Borrar los ${ps.length} pacientes de «${c}» con todos sus seguimientos, anotaciones y tareas?\n\nSi la clínica te ha pedido que le devuelvas los datos, expórtalos antes.`)) return;
+      if ((prompt(`Para confirmar, escribe el nombre de la clínica: ${c}`) || '').trim() !== c) return toast('No coincide el nombre: no se ha borrado nada');
+      const ids = new Set(ps.map(x => x.id));
+      S.patients = S.patients.filter(x => !ids.has(x.id)); S.tareas = S.tareas.filter(x => !ids.has(x.pacienteId));
+      save(); toast(`Borrados ${ps.length} pacientes de ${c}`); break;
+    }
+    case 'delclinica': {
+      const c = el.dataset.c, n = S.patients.filter(x => x.clinica === c).length;
+      if (!confirm(n ? `¿Eliminar la clínica «${c}»? Sus ${n} pacientes quedarán sin clínica asignada (no se borran).` : `¿Eliminar la clínica «${c}»?`)) return;
+      S.patients.forEach(x => { if (x.clinica === c) x.clinica = ''; });
+      S.clinicas = S.clinicas.filter(x => x !== c);
+      save(); break;
+    }
+    case 'demo': cargarDemo(); break;
+    case 'borrardemo':
+      if (confirm('¿Eliminar los pacientes de ejemplo?')) {
+        const ids = new Set(S.patients.filter(x => x.demo).map(x => x.id));
+        S.patients = S.patients.filter(x => !x.demo); S.tareas = S.tareas.filter(x => !ids.has(x.pacienteId)); save();
+      } break;
+    case 'export': exportar(); break;
+    case 'import': document.getElementById('fileImp').click(); break;
+    case 'borrartodo':
+      if (confirm('¿Borrar TODOS los pacientes, seguimientos y tareas? Asegúrate de tener una copia.') && confirm('¿Seguro? Esta acción no se puede deshacer.')) {
+        S = structuredClone(DEFAULTS); save();
+      } break;
+  }
+});
+document.getElementById('sync').addEventListener('click', () => { if (dirty) { clearTimeout(syncTimer); sync(); } });
+
+document.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, d = Object.fromEntries(new FormData(f));
+  const btn = f.querySelector('button.primary, button:not([type=button])');
+  const gerr = msg => { const g = document.getElementById('gerr'); if (g) g.textContent = msg; };
+  const busy = async (txt, fn) => {
+    const old = btn.textContent; btn.disabled = true; btn.textContent = txt;
+    try { await fn(); } catch (err) { gerr(err.message); } finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = old; } }
+  };
+
+  // --- acceso ---
+  if (f.id === 'gLogin') return busy('Entrando…', async () => { await authToken('password', { email: d.email.trim(), password: d.password }); await prepararClave(); });
+  if (f.id === 'gRecover') return busy('Enviando…', async () => {
+    const qs = /^https?:/.test(location.protocol) ? '?redirect_to=' + encodeURIComponent(location.origin + location.pathname) : '';
+    const r = await fetch(`${SB_URL}/auth/v1/recover${qs}`, { method: 'POST', headers: { apikey: SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: d.email.trim() }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(traducir(j.msg || j.message || 'No se ha podido enviar')); }
+    showGate('recover-ok');
+  });
+  if (f.id === 'gNewPass') return busy('Guardando…', async () => {
+    if (d.p1 !== d.p2) throw new Error('Las contraseñas no coinciden.');
+    await api('/auth/v1/user', { method: 'PUT', body: JSON.stringify({ password: d.p1 }) });
+    toast('Contraseña actualizada'); await prepararClave();
+  });
+  if (f.id === 'gClave') return busy('Abriendo…', () => desbloquear(d.clave));
+  if (f.id === 'gCrear') return busy('Creando…', async () => {
+    if (d.c1 !== d.c2) throw new Error('Las claves no coinciden.');
+    if (d.c1.length < 10) throw new Error('Usa al menos 10 caracteres.');
+    await crearBoveda(d.c1);
+  });
+  if (!unlocked) return;
+
+  // --- datos ---
+  if (f.id === 'fp') {
+    if (pareceNombreCompleto(d.nombre) && !confirm(`«${d.nombre.trim()}» parece un nombre con apellido completo. Usa el nombre y solo las iniciales de los apellidos (ej. María G. R.).\n\n¿Guardar igualmente?`)) return;
+    if (!okPrivacidad(d.nombre, d.objetivo, d.notas)) return;
+    let p = f.dataset.id ? byId(f.dataset.id) : null;
+    const nuevo = !p;
+    if (nuevo) { p = nuevoPaciente(); p.id = uid(); S.patients.push(p); }
+    if (!d.nombre.trim()) {
+      let n = S.patients.length;
+      do { d.nombre = 'P-' + String(n).padStart(3, '0'); n++; } while (S.patients.some(x => x !== p && x.nombre === d.nombre));
+    }
+    for (const k of ['nombre', 'fechaAlta', 'clinica', 'estado', 'objetivo', 'servicio', 'fechaInicio', 'fechaFinPlan', 'importe', 'pago', 'proximaVisita', 'horaVisita', 'notas'])
+      p[k] = (d[k] || '').trim();
+    p.sesionesContratadas = d.sesionesContratadas ? Number(d.sesionesContratadas) : '';
+    p.reglas = leerReglas(d); p.canal = d.canal;
+    view = { tab: 'ficha', id: p.id };
+    save(); toast(nuevo ? 'Paciente creado' : 'Cambios guardados');
+  } else if (f.id === 'fv') {
+    if (!okPrivacidad(d.habitos, d.avances, d.acuerdos, d.notas)) return;
+    const p = byId(f.dataset.id);
+    const v = { id: uid(), fecha: d.fecha, tipo: d.tipo, habitos: d.habitos.trim(), avances: d.avances.trim(), acuerdos: d.acuerdos.trim(), notas: d.notas.trim(), cuenta: !!d.cuenta };
+    p.visitas.push(v);
+    if (p.proximaVisita && p.proximaVisita <= v.fecha) { p.proximaVisita = ''; p.horaVisita = ''; }
+    if (d.proxima) { p.proximaVisita = d.proxima; p.horaVisita = d.hora || ''; }
+    if (p.estado === 'pausado') p.estado = 'activo';
+    save(); toast('Seguimiento guardado');
+  } else if (f.id === 'fn') {
+    if (!okPrivacidad(d.texto)) return;
+    const p = byId(f.dataset.id);
+    p.anotaciones.push({ id: uid(), fecha: d.fecha, canal: d.canal, texto: d.texto.trim() });
+    if (['whatsapp', 'email', 'llamada'].includes(d.canal) && d.fecha > (p.ultimoMensaje || '')) p.ultimoMensaje = d.fecha;
+    save(); toast('Anotación guardada');
+  } else if (f.id === 'ft') {
+    if (!okPrivacidad(d.texto)) return;
+    S.tareas.push({ id: uid(), fecha: d.fecha, texto: d.texto.trim(), hecho: false, pacienteId: f.dataset.pid || d.pacienteId || null });
+    save(); toast('Tarea añadida');
+  } else if (f.id === 'fpl') {
+    if (!okPrivacidad(d.texto)) return;
+    let t = f.dataset.id ? S.plantillas.find(x => x.id === f.dataset.id) : null;
+    if (!t) { t = { id: uid() }; S.plantillas.push(t); }
+    if (d.uso) S.plantillas.forEach(x => { if (x.uso === d.uso) x.uso = ''; });
+    Object.assign(t, { titulo: d.titulo.trim(), texto: d.texto.trim(), uso: d.uso });
+    editPlantilla = null; save(); toast('Plantilla guardada');
+  } else if (f.id === 'fc') {
+    const n = d.nombre.trim();
+    if (clinicasTodas().includes(n)) return toast('Esa clínica ya existe');
+    S.clinicas.push(n); save(); toast('Clínica añadida');
+  } else if (f.id === 'fa') {
+    S.reglasDefecto = leerReglas(d); S.canalDefecto = d.canal;
+    S.bloqueoMin = Math.max(1, Number(d.bloqueoMin) || 20);
+    save(); toast('Ajustes guardados');
+  } else if (f.id === 'fk') {
+    if (d.c1 !== d.c2) return alert('Las claves no coinciden.');
+    if (!confirm('¿Cambiar la clave de cifrado? Apunta la nueva antes de continuar.')) return;
+    salt = crypto.getRandomValues(new Uint8Array(16));
+    cryptoKey = await deriveKey(d.c1, salt);
+    save(); toast('Clave de cifrado cambiada');
+  }
+});
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'q') {
+    filtro.q = e.target.value; const pos = e.target.selectionStart;
+    render(); const q = document.getElementById('q'); q.focus(); q.setSelectionRange(pos, pos);
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target.classList.contains('tplpick') && e.target.value) {
+    const t = S.plantillas.find(x => x.id === e.target.value);
+    copiar(rellenar(t.texto, e.target.dataset.id ? byId(e.target.dataset.id) : null), e.target);
+    e.target.value = '';
+    return;
+  }
+  if (e.target.id === 'fEstado') { filtro.estado = e.target.value; render(); }
+  if (e.target.name === 'clinica' && e.target.closest('#fp') && e.target.value === '__nueva') {
+    const n = (prompt('Nombre de la nueva clínica o centro:') || '').trim();
+    if (!n) { e.target.value = ''; return; }
+    if (!clinicasTodas().includes(n)) S.clinicas.push(n);
+    const opt = new Option(n, n, true, true);
+    e.target.add(opt, e.target.options[e.target.options.length - 1]);
+    return;
+  }
+  if (e.target.id === 'fClinica' && e.target.value === '__gestionar') {
+    view = { tab: 'ajustes' }; render();
+    document.getElementById('fc').scrollIntoView(); document.querySelector('#fc input').focus();
+    return;
+  }
+  if (e.target.id === 'fClinica') {
+    filtro.clinica = e.target.value;
+    try { localStorage.setItem('crm-filtro-clinica', filtro.clinica); } catch (err) {}
+    render();
+  }
+  if (e.target.id === 'fileImp' && e.target.files[0]) importar(e.target.files[0]);
+});
+
+// Exportación legible (Excel) de los pacientes de una clínica, para devolverle los datos
+function exportarClinica(c) {
+  if (!confirm(`Se descargará un archivo SIN CIFRAR con los datos de los pacientes de «${c}», para entregárselo a la clínica.\n\nGuárdalo con cuidado y bórralo de tu ordenador cuando lo hayas entregado. ¿Continuar?`)) return;
+  const filas = [['Paciente', 'Clínica', 'Tipo de registro', 'Fecha', 'Contenido']];
+  const junta = pares => pares.filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}: ${v}`).join(' | ');
+  for (const p of S.patients.filter(x => x.clinica === c).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))) {
+    filas.push([p.nombre, c, 'Ficha', p.fechaAlta, junta([['Estado', p.estado], ['Objetivo', p.objetivo], ['Plan', p.servicio],
+      ['Sesiones incluidas', p.sesionesContratadas], ['Sesiones usadas', sesionesUsadas(p)], ['Inicio plan', p.fechaInicio], ['Fin plan', p.fechaFinPlan],
+      ['Importe', p.importe], ['Pago', p.pago], ['Próxima visita', [p.proximaVisita, p.horaVisita].filter(Boolean).join(' ')],
+      ['Contacto preferido', (CANALES[p.canal] || '').slice(2).trim()], ['Notas', p.notas]])]);
+    for (const v of visitasOrd(p)) filas.push([p.nombre, c, 'Seguimiento · ' + v.tipo, v.fecha,
+      junta([['Hábitos trabajados', v.habitos], ['Avances', v.avances], ['Acuerdos', v.acuerdos], ['Notas', v.notas]])]);
+    for (const n of [...p.anotaciones].sort(cmpFecha)) filas.push([p.nombre, c, 'Anotación · ' + (CANALES[n.canal] || n.canal).slice(2).trim(), n.fecha, n.texto]);
+    for (const t of S.tareas.filter(x => x.pacienteId === p.id).sort(cmpFecha)) filas.push([p.nombre, c, 'Tarea' + (t.hecho ? ' (hecha)' : ''), t.fecha, t.texto]);
+  }
+  const csv = '\ufeff' + filas.map(f => f.map(v => '"' + String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"').join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `pacientes-${c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${today()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function exportar() {
+  if (DEMO) return toast('Las copias de seguridad no están disponibles en la demo');
+  const blob = new Blob([await encryptState()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `seguimiento-copia-cifrada-${today()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  S.lastBackup = today(); save();
+}
+async function importar(file) {
+  if (DEMO) return toast('Restaurar copias no está disponible en la demo');
+  let o;
+  try { o = JSON.parse(await file.text()); } catch (e) { return alert('El archivo no es una copia válida.'); }
+  let data;
+  if (o.ct) {
+    const pass = prompt('Clave de cifrado con la que se hizo esta copia:');
+    if (!pass) return;
+    try { data = await decryptBlob(o, await deriveKey(pass, unb64(o.salt))); } catch (e) { return alert('Clave incorrecta para esta copia.'); }
+  } else if (Array.isArray(o.patients)) data = o;
+  else return alert('El archivo no es una copia válida.');
+  if (!confirm(`La copia contiene ${data.patients.length} pacientes. Sustituirá los datos actuales. ¿Continuar?`)) return;
+  S = normalize(data); save(); toast('Copia restaurada');
+}
+
+function cargarDemo() {
+  const t = today(), d = n => addDays(t, n);
+  const mk = o => Object.assign(nuevoPaciente(), { id: uid(), demo: true }, o);
+  const vis = (fechas, extra = {}) => fechas.map((f, i) => ({ id: uid(), fecha: f, tipo: i ? 'Seguimiento' : 'Primera visita',
+    habitos: '', avances: '', acuerdos: '', notas: '', cuenta: true, ...extra }));
+  const a = mk({ nombre: 'Ana P. R.', clinica: 'Clínica Ejemplo Norte', objetivo: 'Organizar las cenas entre semana', servicio: 'Bono 5 visitas', sesionesContratadas: 5,
+      fechaAlta: d(-60), fechaInicio: d(-60), importe: '—', reglas: { frecuenciaDias: 15, seguimientoModo: 'tras', seguimientoDias: 7, inactividadDias: 30, avisarSinProxima: true }, proximaVisita: d(3), horaVisita: '10:00',
+      visitas: vis([d(-60), d(-45), d(-30), d(-8)], { habitos: 'Planificación semanal de cenas', acuerdos: 'Preparar lista de la compra el domingo' }) });
+  const b = mk({ nombre: 'Jordi S. M.', clinica: 'Online', objetivo: 'Rendimiento deportivo', servicio: 'Visita suelta', fechaAlta: d(-50), fechaInicio: d(-50),
+      pago: 'pendiente', canal: 'email', reglas: { frecuenciaDias: 30, seguimientoModo: 'cada', seguimientoDias: 10, inactividadDias: 40, avisarSinProxima: true },
+      ultimoMensaje: d(-40), anotaciones: [{ id: uid(), fecha: d(-40), canal: 'email', texto: 'Le envié la guía de snacks' }], visitas: vis([d(-50)]) });
+  const c = mk({ nombre: 'Marta L. G.', clinica: 'Clínica Ejemplo Norte', objetivo: 'Mejorar desayunos', servicio: 'Plan trimestral', sesionesContratadas: 6,
+      fechaAlta: d(-85), fechaInicio: d(-85), fechaFinPlan: d(5), reglas: { frecuenciaDias: 15, seguimientoModo: 'tras', seguimientoDias: 3, inactividadDias: 30, avisarSinProxima: true }, proximaVisita: d(-1),
+      visitas: vis([d(-85), d(-70), d(-55), d(-40), d(-25)]) });
+  S.patients.push(a, b, c);
+  S.tareas.push({ id: uid(), fecha: t, texto: 'Enviar receta de desayuno', hecho: false, pacienteId: c.id },
+                { id: uid(), fecha: d(2), texto: 'Preparar material del taller', hecho: false, pacienteId: null });
+  save();
+}
+
+// ======================= Bloqueo, sincronización entre dispositivos y salida =======================
+let lastAct = Date.now();
+['click', 'keydown', 'touchstart', 'scroll'].forEach(ev => addEventListener(ev, () => lastAct = Date.now(), { passive: true }));
+setInterval(() => {
+  if (unlocked && !dirty && !syncing && Date.now() - lastAct > S.bloqueoMin * 60000) location.reload();
+}, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !unlocked) return;
+  if (!dirty && !syncing && Date.now() - lastAct > S.bloqueoMin * 60000) return location.reload();
+  comprobarRemoto();
+});
+addEventListener('beforeunload', e => { if (dirty || syncing) { e.preventDefault(); e.returnValue = ''; } });
+
+start();
+</script>
+</body>
+</html>
