@@ -1148,20 +1148,21 @@ function aFecha(v) {
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 // Nombre(s) completos + iniciales de los apellidos. Nombres compuestos («Ana María», «José Luis») se mantienen.
-const NOMBRES_COMPUESTOS = new Set(['maria', 'maría', 'mari', 'jose', 'josé', 'luis', 'carmen', 'pilar', 'jesus', 'jesús', 'antonio', 'manuel', 'angel', 'ángel',
-  'isabel', 'teresa', 'rosa', 'elena', 'dolores', 'mercedes', 'victoria', 'eugenia', 'ignacio', 'javier', 'miguel', 'carlos', 'francisco', 'juan', 'pablo',
-  'ramon', 'ramón', 'andres', 'andrés', 'alberto', 'enrique', 'fernando', 'jordi', 'pau', 'marc', 'anna', 'ana', 'laura', 'lucia', 'lucía', 'paula', 'cristina',
-  'belen', 'belén', 'soledad', 'nieves', 'rocio', 'rocío', 'esther', 'montserrat', 'neus', 'nuria', 'núria', 'emilia', 'antonia', 'josefa', 'luisa', 'fernanda']);
+// Segundos nombres que casi nunca son apellidos: solo con ellos «Nombre X Apellido» se trata como nombre compuesto
+const NOMBRES_COMPUESTOS = new Set(['maria', 'mª', 'jose', 'carmen', 'pilar', 'dolores', 'teresa', 'isabel', 'luisa', 'josefa', 'antonia',
+  'mercedes', 'angeles', 'eugenia', 'cristina', 'elena', 'lucia', 'victoria', 'luis', 'carlos', 'antonio', 'manuel', 'javier', 'ignacio', 'francisco']);
 function nombreIniciales(s) {
   const particulas = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'i', 'da', 'van', 'von']);
-  const w = String(s).trim().split(/\s+/).filter(Boolean);
+  let txt = String(s).trim();
+  if (txt.includes(',')) { const [ap, no] = txt.split(','); txt = `${no} ${ap}`; }   // formato «Apellidos, Nombre»
+  const w = txt.split(/\s+/).filter(Boolean);
   if (!w.length) return '';
   const cap = x => particulas.has(x.toLowerCase()) ? x.toLowerCase() : x.split('-').map(y => y.charAt(0).toUpperCase() + y.slice(1).toLowerCase()).join('-');
   const sig = w.filter(x => !particulas.has(x.toLowerCase()));        // palabras sin «de», «la»…
   // Nº de palabras de nombre: con 4 o más palabras, todo menos los dos apellidos; con 3, dos si la segunda es un nombre habitual
   let nNombre = 1;
   if (sig.length >= 4) nNombre = sig.length - 2;
-  else if (sig.length === 3 && NOMBRES_COMPUESTOS.has(sig[1].toLowerCase())) nNombre = 2;
+  else if (sig.length === 3 && NOMBRES_COMPUESTOS.has(normNombre(sig[1]))) nNombre = 2;
   // el nombre conserva las partículas intermedias («María del Carmen»)
   const partes = []; let vistas = 0;
   for (const x of w) { if (vistas === nNombre) break; partes.push(cap(x)); if (!particulas.has(x.toLowerCase())) vistas++; }
