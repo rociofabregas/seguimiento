@@ -1097,20 +1097,36 @@ async function leerXlsx(file) {
   const ss = ssTxt ? [...xml(ssTxt).getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
   const rels = {};
   for (const r of xml(await leer('xl/_rels/workbook.xml.rels')).getElementsByTagName('Relationship')) rels[r.getAttribute('Id')] = r.getAttribute('Target');
+  // Colores de cada estilo de celda (para poder excluir filas marcadas, p. ej. en rojo)
+  let xfs = [];
+  const stTxt = await leer('xl/styles.xml');
+  if (stTxt) {
+    const d = xml(stTxt), hijos = tag => { const el = d.getElementsByTagName(tag)[0]; return el ? [...el.children] : []; };
+    const rgb = el => { const c = el && el.getAttribute('rgb'); return c ? c.slice(-6).toUpperCase() : null; };
+    const fondos = hijos('fills').map(f => { const pf = f.getElementsByTagName('patternFill')[0];
+      return pf && pf.getAttribute('patternType') && pf.getAttribute('patternType') !== 'none' ? rgb(pf.getElementsByTagName('fgColor')[0]) : null; });
+    const letras = hijos('fonts').map(f => rgb([...f.children].find(x => x.localName === 'color')));
+    xfs = hijos('cellXfs').map(x => {
+      const fo = fondos[+x.getAttribute('fillId') || 0], le = letras[+x.getAttribute('fontId') || 0];
+      return { fondo: fo && fo !== 'FFFFFF' ? fo : null, letra: le && le !== '000000' ? le : null };
+    });
+  }
   const hojas = [];
   for (const sh of xml(await leer('xl/workbook.xml')).getElementsByTagName('sheet')) {
     let ruta = rels[sh.getAttribute('r:id')].replace(/^\//, '');
     if (!ruta.startsWith('xl/')) ruta = 'xl/' + ruta;
     const filas = [];
     for (const r of xml(await leer(ruta)).getElementsByTagName('row')) {
-      const fila = [];
+      const fila = []; fila._s = [];
       for (const c of r.getElementsByTagName('c')) {
         const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0];
         let val = null;
         if (t === 's' && v) val = ss[+v.textContent];
         else if (t === 'inlineStr') val = [...c.getElementsByTagName('t')].map(x => x.textContent).join('');
         else if (v) val = (t === 'str' || t === 'b') ? v.textContent : Number(v.textContent);
-        fila[colIndex(c.getAttribute('r').replace(/\d+/g, ''))] = val;
+        const ci = colIndex(c.getAttribute('r').replace(/\d+/g, ''));
+        fila[ci] = val;
+        if (xfs[+c.getAttribute('s')]) fila._s[ci] = xfs[+c.getAttribute('s')];
       }
       if (fila.some(x => x != null && String(x).trim() !== '')) filas.push(fila);
     }
@@ -1172,7 +1188,7 @@ function nombreIniciales(s) {
 }
 function autodetectar() {
   const h = imp.hojas[imp.hoja], titulos = h.filas[0] || [];
-  imp.map = {}; imp.nombres = {}; imp.tiposExcluidos = new Set();
+  imp.map = {}; imp.nombres = {}; imp.tiposExcluidos = new Set(); imp.coloresExcluidos = new Set();
   const ncols = Math.max(0, ...h.filas.map(f => f.length));
   for (let c = 0; c < ncols; c++) {
     const t = String(titulos[c] ?? '').trim();
@@ -1185,6 +1201,8 @@ function autodetectar() {
       : /\biq\b|cirug|interv|operaci/i.test(t) ? 'cirugia'
       : /alta/i.test(t) ? 'alta' : /trat/i.test(t) ? 'sesiones' : /plan|servicio|bono/i.test(t) ? 'plan' : /objetivo/i.test(t) ? 'objetivo' : 'ignorar';
   }
+  // por defecto se excluyen las filas con el texto del nombre en rojo
+  for (const [k] of coloresNombre()) if (k.startsWith('letra:') && nombreColor(k.split(':')[1]) === 'rojo') imp.coloresExcluidos.add(k);
 }
 // Valores de «Tipo de visita» del archivo, para elegir cuáles importar
 function tiposVisitaArchivo() {
@@ -1197,15 +1215,32 @@ function tiposVisitaArchivo() {
 // Nombres que no son pacientes (reuniones, bloqueos de agenda…): se excluyen al importar
 const normNombre = x => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 const excluidoImport = raw => S.excluirImport.some(x => normNombre(raw).includes(x));
+function nombreColor(hex) {
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)), max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max - min < 12) return max > 200 ? 'gris claro' : max < 60 ? 'negro' : 'gris';
+  let h = max === r ? ((g - b) / (max - min)) % 6 : max === g ? (b - r) / (max - min) + 2 : (r - g) / (max - min) + 4;
+  h = (h * 60 + 360) % 360;
+  const n = h < 15 || h >= 345 ? 'rojo' : h < 40 ? 'naranja' : h < 70 ? 'amarillo' : h < 170 ? 'verde' : h < 260 ? 'azul' : h < 300 ? 'morado' : 'rosa';
+  return n + (min > 160 ? ' claro' : '');
+}
+const colNombre = () => Object.keys(imp.map).find(c => imp.map[c] === 'nombre');
+const clavesColor = f => { const e = f._s && f._s[colNombre()]; return e ? [e.letra && 'letra:' + e.letra, e.fondo && 'fondo:' + e.fondo].filter(Boolean) : []; };
+function coloresNombre() {
+  if (colNombre() == null) return [];
+  const n = {};
+  for (const f of imp.hojas[imp.hoja].filas.slice(1)) for (const k of clavesColor(f)) n[k] = (n[k] || 0) + 1;
+  return Object.entries(n).sort((a, b) => b[1] - a[1]);
+}
 const tipoVisitaCRM = t => /primera/i.test(t) ? 'Primera visita' : /video|online|tele/i.test(t) ? 'Online' : 'Seguimiento';
 
 // Agrupa las filas por paciente (vale tanto para «una fila por paciente» como para «una fila por cita»)
 function candidatosImport() {
   const h = imp.hojas[imp.hoja], cols = Object.entries(imp.map).filter(([, dst]) => dst !== 'ignorar');
   const hayHora = cols.some(([, d]) => d === 'hora'), t = today();
-  const st = { fechasMalas: 0, descartados: 0, sinNumero: 0, eliminadas: 0, excluidas: 0 };
+  const st = { fechasMalas: 0, descartados: 0, sinNumero: 0, eliminadas: 0, excluidas: 0, porColor: 0 };
   const grupos = new Map();
   for (const f of h.filas.slice(1)) {
+    if (clavesColor(f).some(k => imp.coloresExcluidos.has(k))) { st.porColor++; continue; }
     let raw = '';
     const fila = { fechas: [], hora: '', asis: '', tipo: '' }, a = {};
     for (const [col, dst] of cols) {
@@ -1307,6 +1342,13 @@ function renderImportar() {
   if (tipos.length) h += `<div class="card"><b>Tipos de visita a importar</b>
     <div class="hint">Desmarca los que no sean tuyos (por ejemplo, servicios de otros profesionales de la clínica).</div>
     <div class="row" style="margin-top:8px">${tipos.map(([t, n]) => `<label class="check" style="padding:0"><input type="checkbox" class="impTipo" data-tipo="${esc(t)}" ${imp.tiposExcluidos.has(t) ? '' : 'checked'}> ${esc(t)} <span class="hint">(${n})</span></label>`).join('')}</div></div>`;
+  const colores = coloresNombre();
+  if (colores.length) h += `<div class="card"><b>Filas marcadas con color</b>
+    <div class="hint">Colores que tiene la columna del nombre en el Excel. Marca los que <b>no</b> quieres importar.</div>
+    <div class="row" style="margin-top:8px">${colores.map(([k, n]) => { const [tipo, hex] = k.split(':'); return `<label class="check" style="padding:0">
+      <input type="checkbox" class="impColor" data-k="${k}" ${imp.coloresExcluidos.has(k) ? 'checked' : ''}>
+      <span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--line);${tipo === 'fondo' ? `background:#${hex}` : `background:#fff;color:#${hex};font-weight:700;font-size:11px;line-height:13px;text-align:center`}">${tipo === 'letra' ? 'A' : ''}</span>
+      ${tipo === 'letra' ? 'Letra' : 'Fondo'} ${nombreColor(hex)} <span class="hint">(${n} fila${n === 1 ? '' : 's'})</span></label>`; }).join('')}</div></div>`;
   h += `<div class="card grid"><b class="full">2. Opciones</b>
       <label>Clínica de estos pacientes<select id="impClinica">${opcionesClinica(imp.clinica)}</select></label>
       <label>Estado<select id="impEstado">
@@ -1328,6 +1370,7 @@ function renderImportar() {
     ${res.some(c => c.futuras.length) ? `<br>${res.filter(c => c.futuras.length).length} pacientes tienen una cita futura: se pondrá como «Próxima visita».` : ''}
     ${parados.length ? `<br><b>${parados.length === 1 ? '1 paciente lleva' : parados.length + ' pacientes llevan'} más de 3 meses sin venir y aún ${parados.length === 1 ? 'le quedan' : 'les quedan'} visitas del plan</b> (en rojo en «Pendientes»): quedarán activos y te avisará en Hoy.` : ''}
     ${excl.length ? `<br><span class="hint">Excluidos (no son pacientes): ${excl.map(c => esc(c.raw)).join(', ')}.</span>` : ''}
+    ${r.porColor ? `<br><span class="hint">${r.porColor} filas marcadas con color excluido no se importan.</span>` : ''}
     ${r.eliminadas ? `<br><span class="hint">${r.eliminadas} citas eliminadas se ignoran.</span>` : ''}
     ${r.excluidas ? `<br><span class="hint">${r.excluidas} citas de tipos desmarcados se ignoran.</span>` : ''}
     ${r.sinNumero ? `<br><span class="hint">${r.sinNumero} celdas de tratamiento no indican un nº de visitas reconocible (como «5V») y se ignoran.</span>` : ''}
@@ -1803,6 +1846,7 @@ document.addEventListener('change', e => {
     S.excluirImport = e.target.checked ? S.excluirImport.filter(x => !n.includes(x)) : [...S.excluirImport, n];
     scheduleSync(); render(); return;
   }
+  if (e.target.classList.contains('impColor')) { imp.coloresExcluidos[e.target.checked ? 'add' : 'delete'](e.target.dataset.k); render(); return; }
   if (e.target.classList.contains('impTipo')) { imp.tiposExcluidos[e.target.checked ? 'delete' : 'add'](e.target.dataset.tipo); render(); return; }
   if (e.target.classList.contains('impMap')) { imp.map[e.target.dataset.col] = e.target.value; imp.tiposExcluidos = new Set(); render(); }
   if (e.target.id === 'impEstado') { imp.estado = e.target.value; render(); }
