@@ -27,7 +27,16 @@
   #sync.err { background: var(--orange); padding: 2px 9px; border-radius: 8px; cursor: pointer; opacity: 1; }
   .hbtn { background: rgba(255,255,255,.12); color: #fff; border: 0; }
   .hbtn:hover { background: rgba(255,255,255,.25); }
-  body.locked nav, body.locked #sync, body.locked .hbtn { display: none; }
+  body.locked nav, body.locked #sync, body.locked .hbtn, body.locked .qs { display: none; }
+  .qs { position: relative; flex: 0 1 260px; min-width: 160px; }
+  .qs input { background: rgba(255,255,255,.15); border: 0; color: #fff; padding: 7px 10px; }
+  .qs input::placeholder { color: #cfe9e6; }
+  .qs input:focus { background: #fff; color: var(--ink); outline: none; }
+  #qqres { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: #fff; color: var(--ink); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 20; overflow: hidden; min-width: 280px; }
+  #qqres .item { padding: 8px 10px; }
+  .hoyvis .item { padding: 10px 0; }
+  @media (max-width: 640px) { .qs { flex: 1 1 100%; order: 5; } }
   main { max-width: 1050px; margin: 0 auto; padding: 24px 16px 60px; }
   h2 { font-size: 20px; margin: 0 0 16px; }
   h3 { font-size: 13px; margin: 22px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -132,6 +141,7 @@
     <button data-go="ajustes">Ajustes</button>
   </nav>
   <span class="spacer"></span>
+  <div class="qs"><input id="qq" type="search" placeholder="🔍 Buscar paciente…" autocomplete="off"><div id="qqres" hidden></div></div>
   <span id="sync"></span>
   <button class="hbtn" data-act="bloquear" title="Bloquear (vuelve a pedir la clave de cifrado)">🔒 Bloquear</button>
 </header>
@@ -639,7 +649,7 @@ function alertas() {
     if (p.proximaVisita && !p.visitas.some(v => v.fecha >= p.proximaVisita)) {
       if (p.proximaVisita < t) out.push({ p, tipo: 'registrar', fecha: p.proximaVisita,
         titulo: '¿Registrar el seguimiento?', detalle: `Tenía revisión el ${fmt(p.proximaVisita)} y aún no está registrada` });
-      else out.push({ p, tipo: 'cita', fecha: p.proximaVisita, titulo: 'Revisión programada',
+      else if (p.proximaVisita > t) out.push({ p, tipo: 'cita', fecha: p.proximaVisita, titulo: 'Revisión programada',
         detalle: fmtCorto(p.proximaVisita) + (p.horaVisita ? ' · ' + p.horaVisita : '') });
     }
     if (Number(p.sesionesContratadas) > 0) {
@@ -720,6 +730,7 @@ function renderHoy() {
       <button class="primary" data-act="nuevo">+ Añadir paciente</button>
       <button data-act="demo">Cargar ejemplos ficticios para probar</button></div>`;
   }
+  h += renderVisitasHoy();
   let algo = false;
   for (const [cls, titulo, items] of grupos) {
     if (!items.length) continue;
@@ -728,6 +739,37 @@ function renderHoy() {
   }
   if (!algo) h += `<div class="card empty">✅ Todo al día. No hay mensajes ni avisos pendientes esta semana.</div>`;
   return h;
+}
+
+// Pacientes con cita hoy: registrar en un toque si vino o no
+const vinoHoy = {};   // pacientes marcados «vino» en esta sesión: muestra la propuesta de próxima visita
+function renderVisitasHoy() {
+  const t = today();
+  const lista = S.patients.filter(p => p.estado !== 'alta' && pasaClinica(p) &&
+      (p.proximaVisita === t || vinoHoy[p.id] || p.visitas.some(v => v.fecha === t) || p.anotaciones.some(n => n.canal === 'ausencia' && n.fecha === t)))
+    .sort((a, b) => (a.horaVisita || '99').localeCompare(b.horaVisita || '99'));
+  if (!lista.length) return '';
+  return `<h3>Visitas de hoy</h3><div class="card hoyvis">${lista.map(p => {
+    const hecha = p.visitas.some(v => v.fecha === t), falta = p.anotaciones.some(n => n.canal === 'ausencia' && n.fecha === t);
+    const sugerida = p.reglas.frecuenciaDias ? addDays(t, p.reglas.frecuenciaDias) : addDays(t, 30);
+    let acts;
+    if (vinoHoy[p.id]) acts = `<span class="hint">Próxima visita:</span><input type="date" id="prox-${p.id}" value="${p.proximaVisita > t ? p.proximaVisita : sugerida}" style="width:auto">
+      <input type="time" id="proxh-${p.id}" value="${p.proximaVisita > t ? esc(p.horaVisita || '') : ''}" style="width:auto">
+      <button class="primary" data-act="hoyprox" data-id="${p.id}">Guardar</button><button data-act="hoyproxno" data-id="${p.id}">Sin fecha</button>`;
+    else if (hecha) acts = `<span class="tag">✓ Vino</span>${p.proximaVisita > t ? `<span class="hint">próxima: ${fmtCorto(p.proximaVisita)}</span>` : ''}`;
+    else if (falta) acts = `<span class="tag g">✗ No vino</span>`;
+    else acts = `<button class="primary" data-act="hoyvino" data-id="${p.id}">✓ Vino</button><button data-act="hoynovino" data-id="${p.id}">✗ No vino</button>`;
+    return `<div class="item"><div class="txt"><b>${esc(p.nombre)}</b> ${p.horaVisita && p.proximaVisita === t ? '· ' + esc(p.horaVisita) : ''} ${filtro.clinica ? '' : tagClinica(p)} ${tagCirugia(p)}
+      ${visitasPendientes(p) ? `<span class="hint">· ${sesionesUsadas(p)} de ${p.sesionesContratadas} sesiones</span>` : ''}</div>
+      <div class="row">${acts}<button data-act="ficha" data-id="${p.id}">Ficha</button></div></div>`;
+  }).join('')}</div>`;
+}
+function registrarVisitaHoy(p) {
+  const t = today();
+  if (!p.visitas.some(v => v.fecha === t))
+    p.visitas.push({ id: uid(), fecha: t, tipo: p.visitas.length ? 'Seguimiento' : 'Primera visita', habitos: '', avances: '', acuerdos: '', notas: '', cuenta: true });
+  if (p.proximaVisita && p.proximaVisita <= t) { p.proximaVisita = ''; p.horaVisita = ''; }
+  if (p.estado !== 'activo') p.estado = 'activo';
 }
 
 function renderAlerta(a, cls) {
@@ -1548,7 +1590,7 @@ document.addEventListener('click', async e => {
     case 'salir': salir(); break;
     case 'bloquear': if (dirty || syncing) { toast('Espera a que termine de guardarse'); return; } location.reload(); break;
     case 'ficha':
-      view = { tab: 'ficha', id: p.id }; render();
+      cerrarBuscador(); view = { tab: 'ficha', id: p.id }; render();
       if (el.dataset.foco) document.getElementById('cardfv').scrollIntoView(); else scrollTo(0, 0);
       break;
     case 'nuevo': view = { tab: 'ficha', id: null }; render(); scrollTo(0, 0); break;
@@ -1626,6 +1668,18 @@ document.addEventListener('click', async e => {
     case 'copiar':
       copiar(mensaje(p, el.dataset.tipo), el);
       break;
+    case 'hoyvino': registrarVisitaHoy(p); vinoHoy[p.id] = true; save(); toast('Visita registrada'); break;
+    case 'hoynovino':
+      p.anotaciones.push({ id: uid(), fecha: today(), canal: 'ausencia', texto: 'No acudió a la cita' });
+      if (p.proximaVisita === today()) { p.proximaVisita = ''; p.horaVisita = ''; }
+      save(); toast('Anotado: no vino. Te avisará para reprogramar.'); break;
+    case 'hoyprox': {
+      const f = document.getElementById('prox-' + p.id).value;
+      if (f) { p.proximaVisita = f; p.horaVisita = document.getElementById('proxh-' + p.id).value; }
+      delete vinoHoy[p.id]; save(); toast(f ? `Próxima visita: ${fmtCorto(f)}` : 'Guardado'); break;
+    }
+    case 'hoyproxno': delete vinoHoy[p.id]; render(); break;
+    case 'qqvisita': cerrarBuscador(); registrarVisitaHoy(p); vinoHoy[p.id] = true; view = { tab: 'hoy' }; save(); toast(`Visita de hoy registrada: ${p.nombre}`); scrollTo(0, 0); break;
     case 'nocita': if (confirm(`¿Quitar la revisión del ${fmt(p.proximaVisita)} de ${p.nombre}?`)) { p.proximaVisita = ''; p.horaVisita = ''; save(); } break;
     case 'delvisita': if (confirm('¿Eliminar este seguimiento? No se puede deshacer.')) { p.visitas = p.visitas.filter(v => v.id !== el.dataset.vid); save(); } break;
     case 'renovar': {
@@ -1789,7 +1843,22 @@ document.addEventListener('submit', async e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.closest('#planRapido')) { e.preventDefault(); document.querySelector('[data-act=planrapido]').click(); }
 });
+function cerrarBuscador() { const r = document.getElementById('qqres'), q = document.getElementById('qq'); r.hidden = true; q.value = ''; q.blur(); }
+function buscarRapido(txt) {
+  const r = document.getElementById('qqres'), q = normNombre(txt);
+  if (!q) { r.hidden = true; return; }
+  const res = S.patients.filter(p => normNombre(p.nombre).includes(q))
+    .sort((a, b) => (a.estado === 'alta') - (b.estado === 'alta') || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 8);
+  r.innerHTML = res.length ? res.map(p => `<div class="item"><div class="txt"><b>${esc(p.nombre)}</b> ${tagClinica(p)}
+      ${p.estado === 'alta' ? '<span class="tag g">alta</span>' : ''}<div class="hint">${p.proximaVisita >= today() ? 'Próxima: ' + fmtCorto(p.proximaVisita) : 'Sin próxima visita'}</div></div>
+      <button data-act="ficha" data-id="${p.id}">Ficha</button><button class="primary" data-act="qqvisita" data-id="${p.id}" title="Registrar que hoy ha venido a consulta">+ Visita hoy</button></div>`).join('')
+    : '<div class="item hint">Ningún paciente coincide.</div>';
+  r.hidden = false;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target.id === 'qq') cerrarBuscador(); });
+document.addEventListener('click', e => { if (!e.target.closest('.qs')) document.getElementById('qqres').hidden = true; });
 document.addEventListener('input', e => {
+  if (e.target.id === 'qq') { buscarRapido(e.target.value); return; }
   if (e.target.id === 'q') {
     filtro.q = e.target.value; const pos = e.target.selectionStart;
     render(); const q = document.getElementById('q'); q.focus(); q.setSelectionRange(pos, pos);
@@ -1929,7 +1998,7 @@ function cargarDemo() {
   const a = mk({ envios: { 'Dieta / pauta': { ultimo: d(-8) }, 'Recetas': { pendiente: t } }, nombre: 'Ana P. R.', clinica: 'Clínica Ejemplo Norte', objetivo: 'Organizar las cenas entre semana', servicio: 'Bono 5 visitas', sesionesContratadas: 5,
       fechaAlta: d(-60), fechaInicio: d(-60), importe: '—', reglas: { frecuenciaDias: 15, seguimientoModo: 'tras', seguimientoDias: 7, inactividadDias: 30, avisarSinProxima: true }, proximaVisita: d(3), horaVisita: '10:00',
       visitas: vis([d(-60), d(-45), d(-30), d(-8)], { habitos: 'Planificación semanal de cenas', acuerdos: 'Preparar lista de la compra el domingo' }) });
-  const b = mk({ nombre: 'Jordi S. M.', clinica: 'Online', objetivo: 'Rendimiento deportivo', servicio: 'Visita suelta', fechaAlta: d(-50), fechaInicio: d(-50),
+  const b = mk({ proximaVisita: t, horaVisita: '17:30', nombre: 'Jordi S. M.', clinica: 'Online', objetivo: 'Rendimiento deportivo', servicio: 'Visita suelta', fechaAlta: d(-50), fechaInicio: d(-50),
       pago: 'pendiente', canal: 'email', reglas: { frecuenciaDias: 30, seguimientoModo: 'cada', seguimientoDias: 10, inactividadDias: 40, avisarSinProxima: true },
       ultimoMensaje: d(-40), anotaciones: [{ id: uid(), fecha: d(-40), canal: 'email', texto: 'Le envié la guía de snacks' }], visitas: vis([d(-50)]) });
   const c = mk({ nombre: 'Marta L. G.', cirugia: true, fechaCirugia: d(-120), clinica: 'Clínica Ejemplo Norte', objetivo: 'Mejorar desayunos', servicio: 'Plan trimestral', sesionesContratadas: 6,
