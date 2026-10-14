@@ -1201,6 +1201,10 @@ function autodetectar() {
       : /\biq\b|cirug|interv|operaci/i.test(t) ? 'cirugia'
       : /alta/i.test(t) ? 'alta' : /trat/i.test(t) ? 'sesiones' : /plan|servicio|bono/i.test(t) ? 'plan' : /objetivo/i.test(t) ? 'objetivo' : 'ignorar';
   }
+  // si la mayoría de nombres ya terminan en iniciales («MARIA GR», «Ana G. R.»), se mantienen tal cual
+  const cn = colNombre(), nombres = cn == null ? [] : [...new Set(h.filas.slice(1).map(f => String(f[cn] ?? '').trim()).filter(Boolean))];
+  const conIniciales = nombres.filter(n => /^([A-ZÁÉÍÓÚÑÇ]\.?){1,3}$/.test(n.split(/\s+/).pop()) && n.split(/\s+/).length > 1).length;
+  imp.modoNombre = nombres.length && conIniciales >= nombres.length / 2 ? 'tal' : 'iniciales';
   // por defecto se excluyen las filas con el texto del nombre en rojo
   for (const [k] of coloresNombre()) if (k.startsWith('letra:') && nombreColor(k.split(':')[1]) === 'rojo') imp.coloresExcluidos.add(k);
 }
@@ -1230,6 +1234,11 @@ function coloresNombre() {
   const n = {};
   for (const f of imp.hojas[imp.hoja].filas.slice(1)) for (const k of clavesColor(f)) n[k] = (n[k] || 0) + 1;
   return Object.entries(n).sort((a, b) => b[1] - a[1]);
+}
+// ¿Parece llevar un apellido completo? (la última palabra es larga y hay más de una palabra)
+function posibleApellido(n) {
+  const w = n.split(/\s+/).filter(x => !/^(de|del|la|las|los|y|i)$/i.test(x));
+  return w.length >= 2 && w[w.length - 1].replace(/[^A-Za-zÀ-ÿ]/g, '').length >= 3 && !NOMBRES_COMPUESTOS.has(normNombre(w[w.length - 1]));
 }
 const tipoVisitaCRM = t => /primera/i.test(t) ? 'Primera visita' : /video|online|tele/i.test(t) ? 'Online' : 'Seguimiento';
 
@@ -1288,7 +1297,8 @@ function candidatosImport() {
     const conVisita = new Set(c.visitas.map(v => v.fecha));
     c.ausencias = [...new Map(c.ausencias.filter(x => !conVisita.has(x.fecha)).map(x => [x.fecha, x])).values()].sort(cmpFecha);
     c.futuras = [...new Set(c.futuras)].sort();
-    c.nombre = (imp.nombres[c.clave] ?? nombreIniciales(c.raw)).trim();
+    c.nombre = (imp.nombres[c.clave] ?? (imp.modoNombre === 'tal' ? c.raw.replace(/\s+/g, ' ') : nombreIniciales(c.raw))).trim();
+    c.dudoso = posibleApellido(c.nombre);
     usados[c.nombre] = (usados[c.nombre] || 0) + 1;
     if (usados[c.nombre] > 1) c.nombre += ` (${usados[c.nombre]})`;   // dos personas distintas con las mismas iniciales
     const p = S.patients.find(x => x.nombre === c.nombre && (x.clinica || '') === (imp.clinica || ''));
@@ -1316,7 +1326,7 @@ function renderImportar() {
       <p style="margin-top:0">El archivo se lee <b>solo en este navegador</b>: no se envía a ningún sitio. Al importar, los pacientes se guardan cifrados como el resto.</p>
       <ul class="hint" style="margin:0 0 12px;padding-left:18px">
         <li>Sirve tanto para una fila por paciente como para una fila por cita (las citas se agrupan por paciente).</li>
-        <li>Los apellidos se convierten en iniciales («María García Ruiz» → «María G. R.»).</li>
+        <li>Si los nombres ya vienen abreviados se mantienen tal cual; si traen apellidos completos, se pueden convertir en iniciales.</li>
         <li>Las citas a las que no acudió se guardan como «🚫 No acudió» (no cuentan como visita).</li>
         <li>Si el paciente ya existe en la misma clínica, se le añaden las visitas que falten (no se duplica).</li>
         <li>Los teléfonos, emails y DNI que encuentre se descartan.</li>
@@ -1351,6 +1361,9 @@ function renderImportar() {
       ${tipo === 'letra' ? 'Letra' : 'Fondo'} ${nombreColor(hex)} <span class="hint">(${n} fila${n === 1 ? '' : 's'})</span></label>`; }).join('')}</div></div>`;
   h += `<div class="card grid"><b class="full">2. Opciones</b>
       <label>Clínica de estos pacientes<select id="impClinica">${opcionesClinica(imp.clinica)}</select></label>
+      <label>Nombres<select id="impModoNombre">
+        <option value="tal" ${imp.modoNombre === 'tal' ? 'selected' : ''}>Tal como están en el Excel</option>
+        <option value="iniciales" ${imp.modoNombre === 'iniciales' ? 'selected' : ''}>Convertir apellidos en iniciales («María García Ruiz» → «María G. R.»)</option></select></label>
       <label>Estado<select id="impEstado">
         <option value="auto" ${imp.estado === 'auto' ? 'selected' : ''}>Automático: activo si vino en los últimos 3 meses, tiene cita futura o le quedan visitas del plan; si no, de alta</option>
         <option value="activo" ${imp.estado === 'activo' ? 'selected' : ''}>Todos activos</option>
@@ -1379,6 +1392,7 @@ function renderImportar() {
     <div style="overflow-x:auto"><table><thead><tr><th title="Desmarca lo que no sea un paciente">Importar</th><th>Nombre</th><th>Visitas</th><th>No acudió</th><th>Próxima cita</th><th>Pendientes</th><th>Última visita</th><th>Cirugía</th><th>Estado</th></tr></thead><tbody>
     ${todos.map(c => `<tr style="cursor:default;${c.excluido ? 'opacity:.4' : ''}"><td><input type="checkbox" class="impIncl" data-raw="${esc(c.raw)}" ${c.excluido ? '' : 'checked'} style="width:auto"></td>
       <td><input class="impNombre" data-clave="${esc(c.clave)}" value="${esc(c.nombre)}" maxlength="30" style="min-width:150px">
+        ${c.dudoso ? `<div><span class="tag o" title="La última palabra parece un apellido completo. Abrévialo si es así.">¿apellido completo?</span></div>` : ''}
         ${c.existente ? `<div class="hint">ya existe · ${c.visitasNuevas.length || c.ausenciasNuevas.length ? `+${c.visitasNuevas.length} visitas, +${c.ausenciasNuevas.length} ausencias` : 'nada nuevo'}</div>` : ''}</td>
       <td>${c.visitas.length}${c.sesiones ? ' de ' + c.sesiones : ''}</td>
       <td>${c.ausencias.length ? `<span class="tag g" title="${esc(c.ausencias.map(x => fmt(x.fecha) + ': ' + x.motivo).join('\n'))}">${c.ausencias.length}</span>` : '—'}</td>
@@ -1849,6 +1863,7 @@ document.addEventListener('change', e => {
   if (e.target.classList.contains('impColor')) { imp.coloresExcluidos[e.target.checked ? 'add' : 'delete'](e.target.dataset.k); render(); return; }
   if (e.target.classList.contains('impTipo')) { imp.tiposExcluidos[e.target.checked ? 'delete' : 'add'](e.target.dataset.tipo); render(); return; }
   if (e.target.classList.contains('impMap')) { imp.map[e.target.dataset.col] = e.target.value; imp.tiposExcluidos = new Set(); render(); }
+  if (e.target.id === 'impModoNombre') { imp.modoNombre = e.target.value; imp.nombres = {}; render(); return; }
   if (e.target.id === 'impEstado') { imp.estado = e.target.value; render(); }
   if (e.target.id === 'impClinica') {
     if (e.target.value === '__nueva') {
