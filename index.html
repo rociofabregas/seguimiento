@@ -1201,10 +1201,7 @@ function autodetectar() {
       : /\biq\b|cirug|interv|operaci/i.test(t) ? 'cirugia'
       : /alta/i.test(t) ? 'alta' : /trat/i.test(t) ? 'sesiones' : /plan|servicio|bono/i.test(t) ? 'plan' : /objetivo/i.test(t) ? 'objetivo' : 'ignorar';
   }
-  // si la mayoría de nombres ya terminan en iniciales («MARIA GR», «Ana G. R.»), se mantienen tal cual
-  const cn = colNombre(), nombres = cn == null ? [] : [...new Set(h.filas.slice(1).map(f => String(f[cn] ?? '').trim()).filter(Boolean))];
-  const conIniciales = nombres.filter(n => /^([A-ZÁÉÍÓÚÑÇ]\.?){1,3}$/.test(n.split(/\s+/).pop()) && n.split(/\s+/).length > 1).length;
-  imp.modoNombre = nombres.length && conIniciales >= nombres.length / 2 ? 'tal' : 'iniciales';
+  imp.modoNombre = 'tal';   // los nombres se importan tal cual están en el Excel, salvo que se elija convertirlos
   // por defecto se excluyen las filas con el texto del nombre en rojo
   for (const [k] of coloresNombre()) if (k.startsWith('letra:') && nombreColor(k.split(':')[1]) === 'rojo') imp.coloresExcluidos.add(k);
 }
