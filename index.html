@@ -338,6 +338,7 @@ function normalize(d) {
   const s = Object.assign(structuredClone(DEFAULTS), d || {});
   s.tareas = Array.isArray(s.tareas) ? s.tareas : [];
   s.clinicas = Array.isArray(s.clinicas) ? s.clinicas : [];
+  if (!Array.isArray(s.excluirImport)) s.excluirImport = ['reunion equipo', 'paciente vip', 'monica rm'];
   if (!Array.isArray(s.tiposEnvio)) s.tiposEnvio = ['Dieta / pauta', 'Mail de seguimiento', 'Recetas', 'Menú semanal', 'Informe de seguimiento'];
   if (!Array.isArray(s.planes)) s.planes = [
     { nombre: 'Primera visita', sesiones: 1 }, { nombre: 'Bono 3 visitas', sesiones: 3 }, { nombre: 'Bono 5 visitas', sesiones: 5 },
@@ -495,6 +496,7 @@ function renderGate() {
 // ======================= Lógica de pacientes =======================
 function visitasOrd(p) { return [...p.visitas].sort(cmpFecha); }
 function ultimaVisita(p) { const v = visitasOrd(p).filter(v => v.fecha <= today()); return v[v.length - 1] || null; }
+const visitasPendientes = p => Number(p.sesionesContratadas) > 0 ? Math.max(0, p.sesionesContratadas - sesionesUsadas(p)) : 0;
 function sesionesUsadas(p) { return p.visitas.filter(v => v.cuenta !== false && (!p.fechaInicio || v.fecha >= p.fechaInicio)).length; }
 // Marcadores: {nombre} → nombre de pila (vacío si es un código), {fecha}/{hora} → próxima visita
 function rellenar(texto, p) {
@@ -507,7 +509,7 @@ function rellenar(texto, p) {
 }
 const plantillaPorUso = uso => S.plantillas.find(t => t.uso === uso);
 function mensaje(p, tipo) {
-  const t = plantillaPorUso(tipo) || S.plantillas[0];
+  const t = plantillaPorUso(tipo === 'pendvis' ? 'inact' : tipo) || S.plantillas[0];
   return t ? rellenar(t.texto, p) : '';
 }
 function copiar(texto, el) {
@@ -534,7 +536,7 @@ function okPrivacidad(...txts) {
   return !x || confirm(`Parece que has escrito ${x}. Para proteger los datos, no guardes nada que identifique al paciente.\n\n¿Guardar de todos modos?`);
 }
 
-const CANALES = { whatsapp: '💬 WhatsApp', email: '✉️ Email', llamada: '📞 Llamada', presencial: '🤝 En persona', envio: '📨 Envío', nota: '📝 Nota' };
+const CANALES = { whatsapp: '💬 WhatsApp', email: '✉️ Email', llamada: '📞 Llamada', presencial: '🤝 En persona', envio: '📨 Envío', ausencia: '🚫 No acudió', nota: '📝 Nota' };
 
 // Envíos (dieta, mails, materiales…): último envío y si queda pendiente
 function marcarEnviado(p, tipo, fecha = today()) {
@@ -610,7 +612,14 @@ function alertas() {
       out.push({ p, tipo: 'seg', fecha: addDays(uv.fecha, r.seguimientoDias),
         titulo: 'Enviar mensaje de seguimiento', detalle: `${r.seguimientoDias} días después de la visita del ${fmt(uv.fecha)}` });
     }
-    if (p.estado === 'activo' && r.inactividadDias && !(p.proximaVisita && p.proximaVisita >= t)) {
+    const quedan = visitasPendientes(p), sinCita = !(p.proximaVisita && p.proximaVisita >= t);
+    const planParado = p.estado === 'activo' && quedan > 0 && sinCita && uv && daysBetween(uv.fecha, t) > 90;
+    if (planParado && !h['pendvis-' + uv.id]) {
+      out.push({ p, k: 'pendvis-' + uv.id, tipo: 'pendvis', fecha: addDays(uv.fecha, 91),
+        titulo: `Le quedan ${quedan} visita${quedan === 1 ? '' : 's'} del plan`,
+        detalle: `Ha hecho ${sesionesUsadas(p)} de ${p.sesionesContratadas} · última visita ${tiempoDesde(uv.fecha)} (${fmt(uv.fecha)}) · sin próxima visita` });
+    }
+    if (!planParado && p.estado === 'activo' && r.inactividadDias && sinCita) {
       const base = uv ? uv.fecha : (p.fechaInicio || p.fechaAlta);
       const k = 'inact-' + (uv ? uv.id : 'ini');
       if (base && !h[k]) {
@@ -678,7 +687,7 @@ function render() {
     if (b.dataset.go === 'hoy') b.innerHTML = 'Hoy' + (n ? ` <span class="count">${n}</span>` : '');
   });
   const app = document.getElementById('app');
-  const R = { hoy: renderHoy, pacientes: renderLista, agenda: renderAgenda, plantillas: renderPlantillas, ajustes: renderAjustes };
+  const R = { hoy: renderHoy, pacientes: renderLista, agenda: renderAgenda, plantillas: renderPlantillas, ajustes: renderAjustes, importar: renderImportar };
   app.innerHTML = view.tab === 'ficha' ? renderFicha(view.id) : R[view.tab]();
 }
 
@@ -724,10 +733,10 @@ function renderHoy() {
 function renderAlerta(a, cls) {
   const p = a.p;
   const tagMap = { seg: ['Mensaje', 'o'], inact: ['Inactividad', 'r'], registrar: ['Revisión', 'b'], cita: ['Revisión', 'b'],
-    bono: ['Plan', ''], fin: ['Plan', ''], tarea: ['Tarea', 'g'], sinprox: ['Agenda', 'b'], envio: ['Envío', 'o'] };
+    bono: ['Plan', ''], fin: ['Plan', ''], tarea: ['Tarea', 'g'], sinprox: ['Agenda', 'b'], envio: ['Envío', 'o'], pendvis: ['Plan sin terminar', 'r'] };
   const [tag, tc] = tagMap[a.tipo];
   let acts = '';
-  if (a.tipo === 'seg' || a.tipo === 'inact') {
+  if (a.tipo === 'seg' || a.tipo === 'inact' || a.tipo === 'pendvis') {
     acts += `<button data-act="copiar" data-id="${p.id}" data-tipo="${a.tipo}">Copiar texto</button>${selectorPlantillas(p)}
       <button class="primary" data-act="msghecho" data-id="${p.id}" data-tipo="${a.tipo}" data-k="${a.k || ''}">✓ Enviado por ${(CANALES[p.canal] || CANALES.whatsapp).slice(2).trim()}</button>`;
   }
@@ -736,7 +745,8 @@ function renderAlerta(a, cls) {
     <button data-act="hecho" data-id="${p.id}" data-k="${a.k}" title="No volver a avisar hasta su próxima visita">No hace falta</button>`;
   if (a.tipo === 'registrar') acts += `<button class="primary" data-act="ficha" data-id="${p.id}" data-foco="fv">Registrar seguimiento</button>
     <button data-act="nocita" data-id="${p.id}">No vino</button>`;
-  if (a.k && !['inact', 'sinprox'].includes(a.tipo)) acts += `<button data-act="hecho" data-id="${p.id}" data-k="${a.k}">✓ Hecho</button>`;
+  if (a.tipo === 'pendvis') acts += `<button data-act="hecho" data-id="${p.id}" data-k="${a.k}" title="No volver a avisar hasta su próxima visita">No hace falta</button>`;
+  if (a.k && !['inact', 'sinprox', 'pendvis'].includes(a.tipo)) acts += `<button data-act="hecho" data-id="${p.id}" data-k="${a.k}">✓ Hecho</button>`;
   if (a.tipo === 'envio') acts += `<button class="primary" data-act="envhecho" data-id="${p.id}" data-env="${esc(a.envio)}">✓ Enviado</button>`;
   if (a.tarea) acts += `<button data-act="tareahecha" data-tid="${a.tarea.id}">✓ Hecho</button>`;
   if (p) acts += `<button data-act="ficha" data-id="${p.id}">Ficha</button>`;
@@ -754,7 +764,7 @@ function renderAlerta(a, cls) {
 function renderLista() {
   const t = today(), q = filtro.q.toLowerCase();
   const list = S.patients
-    .filter(p => filtro.estado === 'todos' || (filtro.estado === 'activos' ? p.estado !== 'alta' : p.estado === filtro.estado))
+    .filter(p => filtro.estado === 'todos' || (filtro.estado === 'activos' ? p.estado !== 'alta' : filtro.estado === 'pendientes' ? p.estado !== 'alta' && visitasPendientes(p) > 0 : p.estado === filtro.estado))
     .filter(pasaClinica)
     .filter(p => !filtro.cirugia || (filtro.cirugia === 'si' ? p.cirugia : !p.cirugia))
     .filter(p => !q || [p.nombre, p.servicio, p.objetivo, p.clinica].join(' ').toLowerCase().includes(q))
@@ -766,7 +776,7 @@ function renderLista() {
   <div class="row" style="margin-bottom:14px">
     <input id="q" placeholder="Buscar por nombre, objetivo, servicio, clínica…" value="${esc(filtro.q)}" style="flex:1;min-width:200px">
     <select id="fEstado" style="width:auto">
-      ${[['activos', 'Activos y en pausa'], ['activo', 'Solo activos'], ['pausado', 'En pausa'], ['alta', 'De alta'], ['todos', 'Todos']]
+      ${[['activos', 'Activos y en pausa'], ['activo', 'Solo activos'], ['pendientes', 'Con visitas pendientes del plan'], ['pausado', 'En pausa'], ['alta', 'De alta'], ['todos', 'Todos']]
         .map(([v, l]) => `<option value="${v}" ${filtro.estado === v ? 'selected' : ''}>${l}</option>`).join('')}
     </select>
     <select id="fCirugia" style="width:auto">
@@ -1052,6 +1062,327 @@ function renderPlantillas() {
       : '<div class="card empty">Aún no tienes plantillas. Pulsa <b>+ Nueva plantilla</b> para crear la primera.</div>'}`;
 }
 
+// ======================= Importar desde Excel / CSV (todo ocurre en el navegador) =======================
+let imp = null;   // { nombreArchivo, hojas: [{ nombre, filas }], hoja, map: { col: destino }, clinica, estado }
+const DESTINOS = { ignorar: 'No importar', nombre: 'Nombre y apellidos', visita: 'Fecha de visita / cita', hora: 'Hora de entrada (si vino)',
+  asistencia: 'Asistencia (presente / ausencia)', tipovisita: 'Tipo de visita', cirugia: 'Cirugía (fecha o sí/no)',
+  alta: 'Fecha de alta', sesiones: 'Nº de visitas del plan (3V, 5V…)', plan: 'Plan / servicio', objetivo: 'Objetivo', notas: 'Notas' };
+const colIndex = c => [...c].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+
+async function abrirZip(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let fin = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { fin = i; break; }
+  if (fin < 0) throw new Error('El archivo no parece un Excel (.xlsx) válido.');
+  const entradas = {};
+  for (let k = 0, q = dv.getUint32(fin + 16, true); k < dv.getUint16(fin + 10, true); k++) {
+    const nlen = dv.getUint16(q + 28, true);
+    entradas[new TextDecoder().decode(u8.subarray(q + 46, q + 46 + nlen))] =
+      { metodo: dv.getUint16(q + 10, true), tam: dv.getUint32(q + 20, true), off: dv.getUint32(q + 42, true) };
+    q += 46 + nlen + dv.getUint16(q + 30, true) + dv.getUint16(q + 32, true);
+  }
+  return async nombre => {
+    const e = entradas[nombre];
+    if (!e) return null;
+    const ini = e.off + 30 + dv.getUint16(e.off + 26, true) + dv.getUint16(e.off + 28, true);
+    const datos = u8.subarray(ini, ini + e.tam);
+    if (e.metodo === 0) return new TextDecoder().decode(datos);
+    return new Response(new Blob([datos]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  };
+}
+async function leerXlsx(file) {
+  const leer = await abrirZip(await file.arrayBuffer());
+  const xml = t => new DOMParser().parseFromString(t, 'application/xml');
+  const ssTxt = await leer('xl/sharedStrings.xml');
+  const ss = ssTxt ? [...xml(ssTxt).getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const rels = {};
+  for (const r of xml(await leer('xl/_rels/workbook.xml.rels')).getElementsByTagName('Relationship')) rels[r.getAttribute('Id')] = r.getAttribute('Target');
+  const hojas = [];
+  for (const sh of xml(await leer('xl/workbook.xml')).getElementsByTagName('sheet')) {
+    let ruta = rels[sh.getAttribute('r:id')].replace(/^\//, '');
+    if (!ruta.startsWith('xl/')) ruta = 'xl/' + ruta;
+    const filas = [];
+    for (const r of xml(await leer(ruta)).getElementsByTagName('row')) {
+      const fila = [];
+      for (const c of r.getElementsByTagName('c')) {
+        const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0];
+        let val = null;
+        if (t === 's' && v) val = ss[+v.textContent];
+        else if (t === 'inlineStr') val = [...c.getElementsByTagName('t')].map(x => x.textContent).join('');
+        else if (v) val = (t === 'str' || t === 'b') ? v.textContent : Number(v.textContent);
+        fila[colIndex(c.getAttribute('r').replace(/\d+/g, ''))] = val;
+      }
+      if (fila.some(x => x != null && String(x).trim() !== '')) filas.push(fila);
+    }
+    hojas.push({ nombre: sh.getAttribute('name'), filas });
+  }
+  return hojas;
+}
+async function leerCsv(file) {
+  const txt = (await file.text()).replace(/^﻿/, '');
+  const sep = (txt.split('\n')[0].match(/;/g) || []).length >= (txt.split('\n')[0].match(/,/g) || []).length ? ';' : ',';
+  const filas = []; let fila = [], campo = '', comillas = false;
+  for (let i = 0; i < txt.length; i++) {
+    const ch = txt[i];
+    if (comillas) { if (ch === '"' && txt[i + 1] === '"') { campo += '"'; i++; } else if (ch === '"') comillas = false; else campo += ch; }
+    else if (ch === '"') comillas = true;
+    else if (ch === sep) { fila.push(campo); campo = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && txt[i + 1] === '\n') i++; fila.push(campo); if (fila.some(x => x.trim())) filas.push(fila); fila = []; campo = ''; }
+    else campo += ch;
+  }
+  fila.push(campo); if (fila.some(x => x.trim())) filas.push(fila);
+  return [{ nombre: file.name, filas }];
+}
+function aFecha(v) {
+  if (v == null || String(v).trim() === '') return null;
+  if (typeof v === 'number') {
+    if (v < 20000 || v > 80000) return null;   // número de serie de fecha de Excel
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+  let m = String(v).match(/(\d{4})-(\d{1,2})-(\d{1,2})/), y, mo, d;
+  if (m) [, y, mo, d] = m.map(Number);
+  else if ((m = String(v).match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) { [, d, mo, y] = m.map(Number); if (y < 100) y += 2000; }
+  else return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+// Nombre(s) completos + iniciales de los apellidos. Nombres compuestos («Ana María», «José Luis») se mantienen.
+const NOMBRES_COMPUESTOS = new Set(['maria', 'maría', 'mari', 'jose', 'josé', 'luis', 'carmen', 'pilar', 'jesus', 'jesús', 'antonio', 'manuel', 'angel', 'ángel',
+  'isabel', 'teresa', 'rosa', 'elena', 'dolores', 'mercedes', 'victoria', 'eugenia', 'ignacio', 'javier', 'miguel', 'carlos', 'francisco', 'juan', 'pablo',
+  'ramon', 'ramón', 'andres', 'andrés', 'alberto', 'enrique', 'fernando', 'jordi', 'pau', 'marc', 'anna', 'ana', 'laura', 'lucia', 'lucía', 'paula', 'cristina',
+  'belen', 'belén', 'soledad', 'nieves', 'rocio', 'rocío', 'esther', 'montserrat', 'neus', 'nuria', 'núria', 'emilia', 'antonia', 'josefa', 'luisa', 'fernanda']);
+function nombreIniciales(s) {
+  const particulas = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'i', 'da', 'van', 'von']);
+  const w = String(s).trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '';
+  const cap = x => particulas.has(x.toLowerCase()) ? x.toLowerCase() : x.split('-').map(y => y.charAt(0).toUpperCase() + y.slice(1).toLowerCase()).join('-');
+  const sig = w.filter(x => !particulas.has(x.toLowerCase()));        // palabras sin «de», «la»…
+  // Nº de palabras de nombre: con 4 o más palabras, todo menos los dos apellidos; con 3, dos si la segunda es un nombre habitual
+  let nNombre = 1;
+  if (sig.length >= 4) nNombre = sig.length - 2;
+  else if (sig.length === 3 && NOMBRES_COMPUESTOS.has(sig[1].toLowerCase())) nNombre = 2;
+  // el nombre conserva las partículas intermedias («María del Carmen»)
+  const partes = []; let vistas = 0;
+  for (const x of w) { if (vistas === nNombre) break; partes.push(cap(x)); if (!particulas.has(x.toLowerCase())) vistas++; }
+  const nombre = partes.join(' ');
+  const apellidos = sig.slice(nNombre).map(x => x.charAt(0).toUpperCase() + '.');
+  return [nombre, ...apellidos].join(' ');
+}
+function autodetectar() {
+  const h = imp.hojas[imp.hoja], titulos = h.filas[0] || [];
+  imp.map = {}; imp.nombres = {}; imp.tiposExcluidos = new Set();
+  const ncols = Math.max(0, ...h.filas.map(f => f.length));
+  for (let c = 0; c < ncols; c++) {
+    const t = String(titulos[c] ?? '').trim();
+    imp.map[c] = /c[oó]d|creaci|habitaci|hospital|factur|^estado$|motivo/i.test(t) ? 'ignorar'
+      : /tipo.*visita/i.test(t) ? 'tipovisita'
+      : /nombre|paciente|cliente/i.test(t) ? 'nombre'
+      : /hora/i.test(t) ? 'hora'
+      : /asistenc/i.test(t) ? 'asistencia'
+      : /visita|^fecha( de)?( visita| cita)?$/i.test(t) ? 'visita'
+      : /\biq\b|cirug|interv|operaci/i.test(t) ? 'cirugia'
+      : /alta/i.test(t) ? 'alta' : /trat/i.test(t) ? 'sesiones' : /plan|servicio|bono/i.test(t) ? 'plan' : /objetivo/i.test(t) ? 'objetivo' : 'ignorar';
+  }
+}
+// Valores de «Tipo de visita» del archivo, para elegir cuáles importar
+function tiposVisitaArchivo() {
+  const col = Object.keys(imp.map).find(c => imp.map[c] === 'tipovisita');
+  if (col == null) return [];
+  const n = {};
+  for (const f of imp.hojas[imp.hoja].filas.slice(1)) { const v = String(f[col] ?? '').trim(); if (v) n[v] = (n[v] || 0) + 1; }
+  return Object.entries(n).sort((a, b) => b[1] - a[1]);
+}
+// Nombres que no son pacientes (reuniones, bloqueos de agenda…): se excluyen al importar
+const normNombre = x => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const excluidoImport = raw => S.excluirImport.some(x => normNombre(raw).includes(x));
+const tipoVisitaCRM = t => /primera/i.test(t) ? 'Primera visita' : /video|online|tele/i.test(t) ? 'Online' : 'Seguimiento';
+
+// Agrupa las filas por paciente (vale tanto para «una fila por paciente» como para «una fila por cita»)
+function candidatosImport() {
+  const h = imp.hojas[imp.hoja], cols = Object.entries(imp.map).filter(([, dst]) => dst !== 'ignorar');
+  const hayHora = cols.some(([, d]) => d === 'hora'), t = today();
+  const st = { fechasMalas: 0, descartados: 0, sinNumero: 0, eliminadas: 0, excluidas: 0 };
+  const grupos = new Map();
+  for (const f of h.filas.slice(1)) {
+    let raw = '';
+    const fila = { fechas: [], hora: '', asis: '', tipo: '' }, a = {};
+    for (const [col, dst] of cols) {
+      const v = f[col];
+      if (v == null || String(v).trim() === '') continue;
+      const txt = String(v).trim();
+      if (dst === 'nombre') raw = txt;
+      else if (dst === 'visita') { const d = aFecha(v); d ? fila.fechas.push(d) : st.fechasMalas++; }
+      else if (dst === 'hora') fila.hora = txt;
+      else if (dst === 'asistencia') fila.asis = txt;
+      else if (dst === 'tipovisita') fila.tipo = txt;
+      else if (dst === 'cirugia') { if (!/^(no|n|-|0)$/i.test(txt)) { a.cirugia = true; a.fechaCirugia = aFecha(v) || ''; } }
+      else if (dst === 'alta') a.alta = aFecha(v) || '';
+      else if (dst === 'sesiones') { const m = txt.match(/(\d+)\s*v(?:isitas?)?\b/i) || txt.match(/^(\d+)$/); m ? a.sesiones = Number(m[1]) : st.sinNumero++; }
+      else if (datoIdentificativo(txt)) st.descartados++;
+      else if (dst === 'notas') (a.notas = a.notas || []).push(txt);
+      else a[dst] = txt;
+    }
+    if (!raw) continue;
+    const clave = raw.toLowerCase().replace(/\s+/g, ' ');
+    if (!grupos.has(clave)) grupos.set(clave, { clave, raw, visitas: [], ausencias: [], futuras: [], cirugia: false, fechaCirugia: '', alta: '', plan: '', objetivo: '', notas: [] });
+    const c = grupos.get(clave);
+    for (const k of ['cirugia', 'fechaCirugia', 'alta', 'sesiones', 'plan', 'objetivo']) if (a[k]) c[k] = a[k];
+    if (a.notas) c.notas.push(...a.notas);
+    if (fila.tipo && imp.tiposExcluidos.has(fila.tipo)) { st.excluidas += fila.fechas.length; continue; }
+    for (const d of fila.fechas) {
+      if (/elimin|anulad|cancel/i.test(fila.asis)) { st.eliminadas++; continue; }
+      let acudio = /ausenc|no ?present|no ?acud|no ?vino|falta/i.test(fila.asis) ? 'no'
+        : /present|asist|acud/i.test(fila.asis) ? 'si'
+        : hayHora ? (fila.hora ? 'si' : 'no') : 'si';
+      if (d > t && acudio !== 'no' || d > t && !fila.asis && !fila.hora) acudio = 'futura';
+      if (acudio === 'si') c.visitas.push({ fecha: d, tipo: fila.tipo ? tipoVisitaCRM(fila.tipo) : null });
+      else if (acudio === 'futura') c.futuras.push(d);
+      else c.ausencias.push({ fecha: d, motivo: /injustific/i.test(fila.asis) ? 'ausencia injustificada' : /justific/i.test(fila.asis) ? 'ausencia justificada'
+        : fila.asis ? fila.asis.toLowerCase() : 'sin hora de entrada' });
+    }
+  }
+  const res = [...grupos.values()];
+  const usados = {};
+  for (const c of res) {
+    const porFecha = new Map();
+    for (const v of c.visitas.sort(cmpFecha)) if (!porFecha.has(v.fecha)) porFecha.set(v.fecha, v);
+    c.visitas = [...porFecha.values()];
+    c.visitas.forEach((v, i) => { if (!v.tipo) v.tipo = i ? 'Seguimiento' : 'Primera visita'; });
+    const conVisita = new Set(c.visitas.map(v => v.fecha));
+    c.ausencias = [...new Map(c.ausencias.filter(x => !conVisita.has(x.fecha)).map(x => [x.fecha, x])).values()].sort(cmpFecha);
+    c.futuras = [...new Set(c.futuras)].sort();
+    c.nombre = (imp.nombres[c.clave] ?? nombreIniciales(c.raw)).trim();
+    usados[c.nombre] = (usados[c.nombre] || 0) + 1;
+    if (usados[c.nombre] > 1) c.nombre += ` (${usados[c.nombre]})`;   // dos personas distintas con las mismas iniciales
+    const p = S.patients.find(x => x.nombre === c.nombre && (x.clinica || '') === (imp.clinica || ''));
+    c.existente = p || null;
+    c.visitasNuevas = p ? c.visitas.filter(v => !p.visitas.some(x => x.fecha === v.fecha)) : c.visitas;
+    c.ausenciasNuevas = p ? c.ausencias.filter(x => !p.anotaciones.some(n => n.canal === 'ausencia' && n.fecha === x.fecha)) : c.ausencias;
+  }
+  res.forEach(c => c.excluido = excluidoImport(c.raw));
+  return { res: res.filter(c => c.nombre), ...st };
+}
+const pendientesImport = c => {
+  const ses = c.sesiones || (c.existente && Number(c.existente.sesionesContratadas)) || 0;
+  const hechas = c.visitas.length + (c.existente ? c.existente.visitas.length - (c.visitas.length - c.visitasNuevas.length) : 0);
+  return ses ? Math.max(0, ses - hechas) : 0;
+};
+function estadoImport(c) {
+  if (imp.estado !== 'auto') return imp.estado;
+  const ult = c.visitas.length ? c.visitas[c.visitas.length - 1].fecha : null;
+  return c.futuras.length || (ult && daysBetween(ult, today()) <= 90) || pendientesImport(c) > 0 ? 'activo' : 'alta';
+}
+function renderImportar() {
+  let h = `<button class="link" data-go="ajustes">← Volver a Ajustes</button>
+    <h2 style="margin-top:10px">Importar pacientes desde Excel</h2>
+    <div class="card">
+      <p style="margin-top:0">El archivo se lee <b>solo en este navegador</b>: no se envía a ningún sitio. Al importar, los pacientes se guardan cifrados como el resto.</p>
+      <ul class="hint" style="margin:0 0 12px;padding-left:18px">
+        <li>Sirve tanto para una fila por paciente como para una fila por cita (las citas se agrupan por paciente).</li>
+        <li>Los apellidos se convierten en iniciales («María García Ruiz» → «María G. R.»).</li>
+        <li>Las citas a las que no acudió se guardan como «🚫 No acudió» (no cuentan como visita).</li>
+        <li>Si el paciente ya existe en la misma clínica, se le añaden las visitas que falten (no se duplica).</li>
+        <li>Los teléfonos, emails y DNI que encuentre se descartan.</li>
+      </ul>
+      <label>Archivo (.xlsx o .csv)<input type="file" id="impFile" accept=".xlsx,.csv"></label>
+      ${imp ? `<div class="hint" style="margin-top:6px">Cargado: ${esc(imp.nombreArchivo)}</div>` : ''}
+    </div>`;
+  if (!imp) return h;
+  const hoja = imp.hojas[imp.hoja], titulos = hoja.filas[0] || [];
+  const cuenta = c => hoja.filas.slice(1).filter(f => f[c] != null && String(f[c]).trim() !== '').length;
+  const avisoCol = t => /trat/i.test(t) ? 'Solo se guarda el número de visitas (p. ej. «5V» → 5). El resto del texto no se importa.'
+    : /coment|observ|nota|motivo/i.test(t) ? '⚠️ Texto libre: puede contener datos clínicos o personales. Recomendado: no importar.'
+    : /^estado$/i.test(t) ? 'El estado de facturación no indica si acudió (hay visitas presentes sin facturar). Se usa «Asistencia» y «Hora de entrada».' : '';
+  h += `<div class="card"><b>1. Qué columna es cada cosa</b>
+    ${imp.hojas.length > 1 ? `<label style="margin:10px 0;max-width:320px">Hoja del Excel<select id="impHoja">${imp.hojas.map((x, i) => `<option value="${i}" ${i === imp.hoja ? 'selected' : ''}>${esc(x.nombre)} (${Math.max(0, x.filas.length - 1)} filas)</option>`).join('')}</select></label>` : ''}
+    <table style="margin-top:6px"><thead><tr><th>Columna del Excel</th><th>Celdas con datos</th><th>Se importa como</th></tr></thead><tbody>
+    ${Object.keys(imp.map).filter(c => titulos[c] != null || cuenta(c)).map(c => `<tr style="cursor:default"><td><b>${esc(titulos[c] ?? '(sin título)')}</b>
+      ${avisoCol(String(titulos[c] ?? '').trim()) ? `<div class="hint">${avisoCol(String(titulos[c]).trim())}</div>` : ''}</td>
+      <td>${cuenta(c)}</td>
+      <td><select class="impMap" data-col="${c}">${Object.entries(DESTINOS).map(([k, l]) => `<option value="${k}" ${imp.map[c] === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`).join('')}
+    </tbody></table></div>`;
+  const tipos = tiposVisitaArchivo();
+  if (tipos.length) h += `<div class="card"><b>Tipos de visita a importar</b>
+    <div class="hint">Desmarca los que no sean tuyos (por ejemplo, servicios de otros profesionales de la clínica).</div>
+    <div class="row" style="margin-top:8px">${tipos.map(([t, n]) => `<label class="check" style="padding:0"><input type="checkbox" class="impTipo" data-tipo="${esc(t)}" ${imp.tiposExcluidos.has(t) ? '' : 'checked'}> ${esc(t)} <span class="hint">(${n})</span></label>`).join('')}</div></div>`;
+  h += `<div class="card grid"><b class="full">2. Opciones</b>
+      <label>Clínica de estos pacientes<select id="impClinica">${opcionesClinica(imp.clinica)}</select></label>
+      <label>Estado<select id="impEstado">
+        <option value="auto" ${imp.estado === 'auto' ? 'selected' : ''}>Automático: activo si vino en los últimos 3 meses, tiene cita futura o le quedan visitas del plan; si no, de alta</option>
+        <option value="activo" ${imp.estado === 'activo' ? 'selected' : ''}>Todos activos</option>
+        <option value="alta" ${imp.estado === 'alta' ? 'selected' : ''}>Todos de alta (solo historial)</option></select></label>
+    </div>`;
+  if (!Object.values(imp.map).includes('nombre')) return h + `<div class="card empty">Elige qué columna contiene el <b>nombre</b> para continuar.</div>`;
+  const r = candidatosImport(), todos = r.res, res = todos.filter(c => !c.excluido), excl = todos.filter(c => c.excluido);
+  const nuevos = res.filter(c => !c.existente), existentes = res.filter(c => c.existente);
+  const suma = (arr, k) => arr.reduce((n, c) => n + c[k].length, 0);
+  const nAct = nuevos.filter(c => estadoImport(c) === 'activo').length;
+  const parados = res.filter(c => pendientesImport(c) > 0 && c.visitas.length && !c.futuras.length && daysBetween(c.visitas[c.visitas.length - 1].fecha, today()) > 90);
+  const hayCambios = nuevos.length || existentes.some(c => c.visitasNuevas.length || c.ausenciasNuevas.length || c.futuras.length);
+  h += `<div class="card"><b>3. Vista previa</b>
+    <p>Se crearán <b>${nuevos.length} pacientes nuevos</b> (${nAct} activos, ${nuevos.length - nAct} de alta) con <b>${suma(nuevos, 'visitasNuevas')} visitas</b>
+      y ${suma(nuevos, 'ausenciasNuevas')} citas a las que no acudieron.
+    ${existentes.length ? `<br><b>${existentes.length} ya existen</b> en esta clínica: se les añadirán ${suma(existentes, 'visitasNuevas')} visitas y ${suma(existentes, 'ausenciasNuevas')} ausencias que aún no tenían.` : ''}
+    ${res.some(c => c.futuras.length) ? `<br>${res.filter(c => c.futuras.length).length} pacientes tienen una cita futura: se pondrá como «Próxima visita».` : ''}
+    ${parados.length ? `<br><b>${parados.length === 1 ? '1 paciente lleva' : parados.length + ' pacientes llevan'} más de 3 meses sin venir y aún ${parados.length === 1 ? 'le quedan' : 'les quedan'} visitas del plan</b> (en rojo en «Pendientes»): quedarán activos y te avisará en Hoy.` : ''}
+    ${excl.length ? `<br><span class="hint">Excluidos (no son pacientes): ${excl.map(c => esc(c.raw)).join(', ')}.</span>` : ''}
+    ${r.eliminadas ? `<br><span class="hint">${r.eliminadas} citas eliminadas se ignoran.</span>` : ''}
+    ${r.excluidas ? `<br><span class="hint">${r.excluidas} citas de tipos desmarcados se ignoran.</span>` : ''}
+    ${r.sinNumero ? `<br><span class="hint">${r.sinNumero} celdas de tratamiento no indican un nº de visitas reconocible (como «5V») y se ignoran.</span>` : ''}
+    ${r.fechasMalas ? `<br><span class="hint">${r.fechasMalas} celdas de fecha no son una fecha reconocible y se ignoran.</span>` : ''}
+    ${r.descartados ? `<br><span class="hint">${r.descartados} celdas parecían teléfonos, emails o DNI y se han descartado.</span>` : ''}</p>
+    <div style="overflow-x:auto"><table><thead><tr><th title="Desmarca lo que no sea un paciente">Importar</th><th>Nombre</th><th>Visitas</th><th>No acudió</th><th>Próxima cita</th><th>Pendientes</th><th>Última visita</th><th>Cirugía</th><th>Estado</th></tr></thead><tbody>
+    ${todos.map(c => `<tr style="cursor:default;${c.excluido ? 'opacity:.4' : ''}"><td><input type="checkbox" class="impIncl" data-raw="${esc(c.raw)}" ${c.excluido ? '' : 'checked'} style="width:auto"></td>
+      <td><input class="impNombre" data-clave="${esc(c.clave)}" value="${esc(c.nombre)}" maxlength="30" style="min-width:150px">
+        ${c.existente ? `<div class="hint">ya existe · ${c.visitasNuevas.length || c.ausenciasNuevas.length ? `+${c.visitasNuevas.length} visitas, +${c.ausenciasNuevas.length} ausencias` : 'nada nuevo'}</div>` : ''}</td>
+      <td>${c.visitas.length}${c.sesiones ? ' de ' + c.sesiones : ''}</td>
+      <td>${c.ausencias.length ? `<span class="tag g" title="${esc(c.ausencias.map(x => fmt(x.fecha) + ': ' + x.motivo).join('\n'))}">${c.ausencias.length}</span>` : '—'}</td>
+      <td>${c.futuras.length ? fmt(c.futuras[0]) : '—'}</td>
+      <td>${pendientesImport(c) ? `<span class="tag ${parados.includes(c) ? 'r' : 'o'}">${pendientesImport(c)}</span>` : '—'}</td>
+      <td>${fmt(c.visitas.length ? c.visitas[c.visitas.length - 1].fecha : null)}</td>
+      <td>${c.cirugia ? 'Sí' + (c.fechaCirugia ? ' · ' + fmt(c.fechaCirugia) : '') : '—'}</td>
+      <td>${c.existente ? esc(c.existente.estado === 'alta' && estadoImport(c) === 'activo' ? 'pasa a activo' : c.existente.estado) : estadoImport(c)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="hint" style="margin-top:6px">Puedes corregir cualquier nombre antes de importar. Desmarca «Importar» en lo que no sea un paciente (reuniones, bloqueos…): se recordará para la próxima vez. Pasa el ratón por el nº de ausencias para ver las fechas.</div>
+    <div class="row" style="margin-top:14px"><button class="primary" data-act="impok" ${hayCambios ? '' : 'disabled'}>Importar</button>
+      <button data-act="impcancel">Cancelar</button></div></div>`;
+  return h;
+}
+function ejecutarImport() {
+  const res = candidatosImport().res.filter(c => !c.excluido);
+  const nuevos = res.filter(c => !c.existente), existentes = res.filter(c => c.existente);
+  if (!confirm(`¿Importar ${nuevos.length} pacientes nuevos y actualizar ${existentes.length} existentes?\n\nConsejo: descarga antes una copia de seguridad (Ajustes).`)) return;
+  const visita = v => ({ id: uid(), fecha: v.fecha, tipo: v.tipo, habitos: '', avances: '', acuerdos: '', notas: '', cuenta: true });
+  const ausencia = a => ({ id: uid(), fecha: a.fecha, canal: 'ausencia', texto: 'No acudió a la cita · ' + a.motivo });
+  for (const c of res) {
+    let p = c.existente;
+    if (!p) {
+      p = Object.assign(nuevoPaciente(), { id: uid(), nombre: c.nombre, clinica: imp.clinica || '', servicio: c.plan, objetivo: c.objetivo,
+        notas: c.notas.join(' · '), importado: today() });
+      p.fechaAlta = p.fechaInicio = c.alta || (c.visitas[0] || {}).fecha || c.futuras[0] || today();
+      p.estado = estadoImport(c);
+      S.patients.push(p);
+    } else if (p.estado === 'alta' && estadoImport(c) === 'activo') p.estado = 'activo';
+    p.visitas.push(...c.visitasNuevas.map(visita));
+    p.anotaciones.push(...c.ausenciasNuevas.map(ausencia));
+    const primera = [...p.visitas].sort(cmpFecha)[0];
+    if (primera && p.importado && primera.fecha < p.fechaAlta) p.fechaAlta = p.fechaInicio = primera.fecha;
+    if (c.cirugia && !p.cirugia) { p.cirugia = true; p.fechaCirugia = c.fechaCirugia; }
+    if (c.sesiones && !p.sesionesContratadas) {
+      p.sesionesContratadas = c.sesiones;
+      const plan = S.planes.find(x => Number(x.sesiones) === c.sesiones);
+      if (plan && !p.servicio) p.servicio = plan.nombre;
+    }
+    if (c.futuras.length && !(p.proximaVisita && p.proximaVisita >= today())) { p.proximaVisita = c.futuras[0]; p.horaVisita = ''; }
+    const uv = ultimaVisita(p);
+    if (uv && uv.fecha < today()) p.hechos['seg-' + uv.id] = p.hechos['seg-' + uv.id] || today();   // no avisar de mensajes por visitas antiguas
+  }
+  if (imp.clinica && !S.clinicas.includes(imp.clinica)) S.clinicas.push(imp.clinica);
+  imp = null; filtro.estado = 'todos'; view = { tab: 'pacientes' };
+  save(); toast(`Importación hecha: ${nuevos.length} nuevos, ${existentes.length} actualizados`);
+}
+
 function renderAjustes() {
   const r = S.reglasDefecto;
   const demos = S.patients.filter(p => p.demo).length;
@@ -1064,6 +1395,12 @@ function renderAjustes() {
     <label>Bloquear tras … minutos sin uso<input name="bloqueoMin" type="number" min="1" max="240" value="${esc(S.bloqueoMin)}"></label>
     <div class="full"><button class="primary">Guardar ajustes</button></div>
   </form>
+
+  <div class="card row">
+    <div style="flex:1;min-width:200px"><b>Importar pacientes desde Excel</b>
+      <div class="hint">Trae tu historial desde un .xlsx o .csv. El archivo se lee solo en este navegador.</div></div>
+    <button class="primary" data-go="importar">Importar…</button>
+  </div>
 
   <div class="card" id="cardPlanes">
     <div class="row"><b>Planes y servicios</b><span class="spacer"></span>
@@ -1179,6 +1516,8 @@ document.addEventListener('click', async e => {
     case 'tareahecha': tarea.hecho = true; save(); break;
     case 'toggletarea': tarea.hecho = el.checked; save(); break;
     case 'deltarea': if (confirm('¿Eliminar esta tarea?')) { S.tareas = S.tareas.filter(x => x !== tarea); save(); } break;
+    case 'impok': ejecutarImport(); break;
+    case 'impcancel': imp = null; view = { tab: 'ajustes' }; render(); break;
     case 'agmodo':
       agendaModo = el.dataset.m; try { localStorage.setItem('crm-agenda-modo', agendaModo); } catch (err) {}
       render(); break;
@@ -1448,6 +1787,32 @@ document.addEventListener('change', e => {
     render();
   }
   if (e.target.id === 'fileImp' && e.target.files[0]) importar(e.target.files[0]);
+  if (e.target.id === 'impFile' && e.target.files[0]) {
+    const file = e.target.files[0];
+    (/\.csv$/i.test(file.name) ? leerCsv(file) : leerXlsx(file)).then(hojas => {
+      if (!hojas.length || !hojas.some(x => x.filas.length > 1)) return alert('El archivo no tiene filas con datos.');
+      imp = { nombreArchivo: file.name, hojas, hoja: Math.max(0, hojas.findIndex(x => x.filas.length > 1)), clinica: filtro.clinica && filtro.clinica !== '__sin' ? filtro.clinica : '', estado: 'auto' };
+      autodetectar(); render();
+    }).catch(err => alert('No se ha podido leer el archivo: ' + err.message));
+  }
+  if (e.target.id === 'impHoja') { imp.hoja = Number(e.target.value); autodetectar(); render(); }
+  if (e.target.classList.contains('impNombre')) { imp.nombres[e.target.dataset.clave] = e.target.value; render(); return; }
+  if (e.target.classList.contains('impIncl')) {
+    const n = normNombre(e.target.dataset.raw);
+    S.excluirImport = e.target.checked ? S.excluirImport.filter(x => !n.includes(x)) : [...S.excluirImport, n];
+    scheduleSync(); render(); return;
+  }
+  if (e.target.classList.contains('impTipo')) { imp.tiposExcluidos[e.target.checked ? 'delete' : 'add'](e.target.dataset.tipo); render(); return; }
+  if (e.target.classList.contains('impMap')) { imp.map[e.target.dataset.col] = e.target.value; imp.tiposExcluidos = new Set(); render(); }
+  if (e.target.id === 'impEstado') { imp.estado = e.target.value; render(); }
+  if (e.target.id === 'impClinica') {
+    if (e.target.value === '__nueva') {
+      const n = (prompt('Nombre de la clínica de estos pacientes:') || '').trim();
+      if (n && !clinicasTodas().includes(n)) S.clinicas.push(n);
+      imp.clinica = n || imp.clinica;
+    } else imp.clinica = e.target.value;
+    render();
+  }
 });
 
 // Exportación legible (Excel) de los pacientes de una clínica, para devolverle los datos
