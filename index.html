@@ -36,6 +36,32 @@
     box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 20; overflow: hidden; min-width: 280px; }
   #qqres .item { padding: 8px 10px; }
   .hoyvis .item { padding: 10px 0; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .kpi b { display: block; font-size: 24px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kpi span { font-size: 13px; color: var(--muted); }
+  .kpi small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .chart { display: flex; align-items: flex-end; gap: 2px; height: 170px; border-bottom: 1px solid var(--line); padding-top: 18px; }
+  .chart .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; height: 100%; cursor: default; position: relative; }
+  .chart .col:hover .cbar { background: #0f766e; }
+  .chart .col { align-items: center; }
+  .chart .cbar { width: 100%; max-width: 44px; background: #0d9488; border-radius: 4px 4px 0 0; min-height: 2px; }
+  .chart .val { font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+  .ejes { display: flex; gap: 2px; margin-top: 4px; }
+  .ejes span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+  #tip { position: fixed; pointer-events: none; background: #2a2f33; color: #fff; font-size: 12px; padding: 6px 9px; border-radius: 7px; z-index: 30; max-width: 240px; }
+  details.datos summary { cursor: pointer; font-size: 12px; color: var(--teal); margin-top: 8px; }
+  details.datos table td, details.datos table th { padding: 4px 8px; font-size: 13px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 14px; }
+  .twocol > *, .chart .col, .ejes span { min-width: 0; }
+  .eval { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .eval:last-child { border-bottom: 0; }
+  .eval .ico { font-size: 18px; line-height: 1.2; }
+  .eval .tx { flex: 1; }
+  .eval .tx b { display: block; }
+  .eval .tx p { margin: 2px 0 0; color: #3d4448; font-size: 14px; }
+  .chart { gap: 6px; } .ejes { gap: 6px; }
   @media (max-width: 640px) { .qs { flex: 1 1 100%; order: 5; } }
   main { max-width: 1050px; margin: 0 auto; padding: 24px 16px 60px; }
   h2 { font-size: 20px; margin: 0 0 16px; }
@@ -137,6 +163,7 @@
     <button data-go="hoy">Hoy</button>
     <button data-go="pacientes">Pacientes</button>
     <button data-go="agenda">Agenda</button>
+    <button data-go="estadisticas">Estadísticas</button>
     <button data-go="plantillas">Plantillas</button>
     <button data-go="ajustes">Ajustes</button>
   </nav>
@@ -697,7 +724,7 @@ function render() {
     if (b.dataset.go === 'hoy') b.innerHTML = 'Hoy' + (n ? ` <span class="count">${n}</span>` : '');
   });
   const app = document.getElementById('app');
-  const R = { hoy: renderHoy, pacientes: renderLista, agenda: renderAgenda, plantillas: renderPlantillas, ajustes: renderAjustes, importar: renderImportar };
+  const R = { hoy: renderHoy, pacientes: renderLista, agenda: renderAgenda, estadisticas: renderEstadisticas, plantillas: renderPlantillas, ajustes: renderAjustes, importar: renderImportar };
   app.innerHTML = view.tab === 'ficha' ? renderFicha(view.id) : R[view.tab]();
 }
 
@@ -739,6 +766,202 @@ function renderHoy() {
   }
   if (!algo) h += `<div class="card empty">✅ Todo al día. No hay mensajes ni avisos pendientes esta semana.</div>`;
   return h;
+}
+
+// ======================= Estadísticas =======================
+let periodoEst = '12m';
+const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+const mesCorto = ym => new Date(+ym.slice(0, 4), +ym.slice(5) - 1, 1).toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
+const mesLargo = ym => new Date(+ym.slice(0, 4), +ym.slice(5) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+const importeNum = x => { const m = String(x || '').replace(/\./g, '').match(/\d+(?:,\d+)?/); return m ? parseFloat(m[0].replace(',', '.')) : 0; };
+
+function metricas(pacientes, desde) {
+  const t = today(), en = f => f >= desde && f <= t;
+  const fechasVis = p => p.visitas.map(v => v.fecha).filter(f => f <= t).sort();
+  const ausencias = p => p.anotaciones.filter(n => n.canal === 'ausencia' && n.fecha <= t).map(n => n.fecha);
+  let visitas = 0, faltas = 0, conVisita = 0, nuevos = 0, nuevosMaduros = 0, vuelven = 0, importe = 0;
+  const duraciones = [];
+  let planCompleto = 0, planCurso = 0, planParado = 0;
+  for (const p of pacientes) {
+    const fv = fechasVis(p), fvP = fv.filter(en);
+    visitas += fvP.length; faltas += ausencias(p).filter(en).length;
+    if (fvP.length) conVisita++;
+    if (fv.length && en(fv[0])) {
+      nuevos++;
+      if (daysBetween(fv[0], t) >= 60) { nuevosMaduros++; if (fv.length >= 2) vuelven++; }
+    }
+    if (fv.length >= 2) duraciones.push(daysBetween(fv[0], fv[fv.length - 1]));
+    if (p.fechaInicio && en(p.fechaInicio)) importe += importeNum(p.importe);
+    const ses = Number(p.sesionesContratadas) || 0;
+    if (ses) {
+      const quedan = visitasPendientes(p), ult = fv[fv.length - 1];
+      if (!quedan) planCompleto++;
+      else if (p.estado === 'alta' || !ult || daysBetween(ult, t) > 90) planParado++;
+      else planCurso++;
+    }
+  }
+  const activos = pacientes.filter(p => p.estado === 'activo').length;
+  const sinProxima = pacientes.filter(p => p.estado === 'activo' && !(p.proximaVisita && p.proximaVisita >= t)).length;
+  const pagoPendiente = pacientes.filter(p => p.estado !== 'alta' && p.pago && p.pago !== 'pagado').length;
+  const enviosPend = pacientes.reduce((n, p) => n + Object.values(p.envios || {}).filter(e => e.pendiente && daysBetween(e.pendiente, t) > 7).length, 0);
+  const pctNum = (a, b) => b ? a / b * 100 : null;
+  return { pagoPendiente, enviosPend, asistenciaN: pctNum(visitas, visitas + faltas), retencionN: pctNum(vuelven, nuevosMaduros),
+    vppN: conVisita ? visitas / conVisita : null, duracionN: duraciones.length ? duraciones.reduce((a, b) => a + b, 0) / duraciones.length / 30.44 : null,
+    total: pacientes.length, activos, sinProxima, visitas, faltas, conVisita, nuevos, nuevosMaduros, vuelven, importe,
+    asistencia: pct(visitas, visitas + faltas), retencion: pct(vuelven, nuevosMaduros),
+    visitasPorPaciente: conVisita ? (visitas / conVisita).toLocaleString('es-ES', { maximumFractionDigits: 1 }) : '—',
+    duracionMeses: duraciones.length ? (duraciones.reduce((a, b) => a + b, 0) / duraciones.length / 30.44).toLocaleString('es-ES', { maximumFractionDigits: 1 }) : '—',
+    planCompleto, planCurso, planParado };
+}
+// Evaluación automática: qué va bien, qué mejorar y qué hacer
+function evaluacion(pac, m) {
+  const out = [], t = today(), r = n => Math.round(n);
+  const add = (tipo, titulo, texto, accion) => out.push({ tipo, titulo, texto, accion });
+  const visitasEn = (a, b) => pac.reduce((n, p) => n + p.visitas.filter(v => v.fecha >= a && v.fecha < b).length, 0);
+  const nuevosEn = (a, b) => pac.filter(p => { const f = p.visitas.map(v => v.fecha).sort()[0]; return f && f >= a && f < b; }).length;
+  if (pac.length < 10) add('idea', 'Aún hay pocos datos', 'Con menos de 10 pacientes las cifras cambian mucho de un mes a otro. Tómalas como orientación.');
+
+  // Tendencia: últimos 3 meses completos frente a los 3 anteriores
+  const ini = t.slice(0, 7) + '-01', a3 = addMonths(ini, -3), a6 = addMonths(ini, -6);
+  const vA = visitasEn(a3, ini), vB = visitasEn(a6, a3), nA = nuevosEn(a3, ini), nB = nuevosEn(a6, a3);
+  if (vB >= 5) {
+    const c = (vA - vB) / vB * 100;
+    if (c >= 10) add('bien', `Las visitas suben un ${r(c)} %`, `${vA} visitas en los últimos 3 meses frente a ${vB} en los 3 anteriores.`);
+    else if (c <= -15) add('alerta', `Las visitas bajan un ${r(-c)} %`, `${vA} visitas en los últimos 3 meses frente a ${vB} en los 3 anteriores. Revisa los pacientes activos sin próxima visita y los planes sin terminar: suelen ser la causa.`);
+  }
+  if (nB >= 3) {
+    const c = (nA - nB) / nB * 100;
+    if (c <= -25) add('mejora', `Entran menos pacientes nuevos (−${r(-c)} %)`, `${nA} nuevos en los últimos 3 meses frente a ${nB} antes. Puede ser estacional; si se mantiene, comenta con la clínica la captación (derivaciones, primera visita, redes).`);
+    else if (c >= 20) add('bien', `Más pacientes nuevos (+${r(c)} %)`, `${nA} nuevos en los últimos 3 meses frente a ${nB} antes. Asegúrate de que todos tienen la 2ª visita apuntada.`);
+  }
+  // Asistencia
+  if (m.asistenciaN != null && m.visitas + m.faltas >= 10) {
+    if (m.asistenciaN >= 90) add('bien', `Asistencia muy buena (${r(m.asistenciaN)} %)`, 'Casi todos los pacientes acuden a sus citas.');
+    else if (m.asistenciaN >= 80) add('mejora', `Asistencia mejorable (${r(m.asistenciaN)} %)`, `${m.faltas} citas perdidas en el periodo. Un recordatorio 24–48 h antes suele reducir las ausencias: tienes la plantilla «Recordatorio de visita».`, '<button data-go="plantillas">Ver plantillas</button>');
+    else add('alerta', `Muchas ausencias (asistencia ${r(m.asistenciaN)} %)`, `${m.faltas} citas perdidas. Envía recordatorio el día antes y valora una política de cancelación con la clínica.`, '<button data-go="plantillas">Ver plantillas</button>');
+  }
+  // Retención tras la 1ª visita
+  if (m.retencionN != null && m.nuevosMaduros >= 5) {
+    if (m.retencionN >= 70) add('bien', `Buena fidelización: ${r(m.retencionN)} % vuelve tras la 1ª visita`, 'La primera visita convence: la mayoría continúa el seguimiento.');
+    else if (m.retencionN >= 50) add('mejora', `Solo ${r(m.retencionN)} % vuelve tras la 1ª visita`, 'Apunta siempre la 2ª visita antes de que se vaya, y envía el mensaje de seguimiento en la primera semana (ya te lo recuerda la pestaña Hoy).');
+    else add('alerta', `Se pierden muchos pacientes tras la 1ª visita (vuelve el ${r(m.retencionN)} %)`, 'Revisa qué se llevan de la primera visita (pauta, objetivos claros, próxima cita) y valora ofrecer un bono desde el inicio.');
+  }
+  // Pacientes activos sin próxima visita
+  if (m.activos && m.sinProxima) {
+    const q = m.sinProxima / m.activos * 100;
+    add(q > 25 ? 'alerta' : 'mejora', `${m.sinProxima} paciente${m.sinProxima === 1 ? '' : 's'} activo${m.sinProxima === 1 ? '' : 's'} sin próxima visita`,
+      `Es la principal vía de abandono${q > 25 ? ` (${r(q)} % de los activos)` : ''}. Escríbeles para cerrar fecha.`, '<button data-act="versinprox">Ver lista</button>');
+  } else if (m.activos >= 5) add('bien', 'Todos los activos tienen próxima visita', 'Así no se pierde nadie entre visitas.');
+  // Planes sin terminar
+  const planes = m.planCompleto + m.planCurso + m.planParado;
+  if (m.planParado) add(m.planParado / planes > 0.25 ? 'alerta' : 'mejora', `${m.planParado} plan${m.planParado === 1 ? '' : 'es'} sin terminar`,
+    'Pacientes que dejaron de venir con visitas pendientes. Un mensaje para retomar (plantilla «Retomar el seguimiento») suele recuperar a una parte.', '<button data-act="verpendientes">Ver lista</button>');
+  else if (planes >= 5) add('bien', 'Los planes se completan', 'No hay pacientes con visitas del plan pendientes que hayan dejado de venir.');
+  // Duración y visitas por paciente
+  if (m.duracionN != null && m.vppN != null) {
+    if (m.duracionN < 2 && m.vppN < 2.5) add('idea', `Seguimientos cortos (${m.duracionMeses} meses de media)`, 'Los cambios de hábitos necesitan tiempo. Valora proponer bonos o planes de 3 meses en la primera visita.');
+    else if (m.duracionN >= 4) add('bien', `Seguimientos largos (${m.duracionMeses} meses de media)`, 'Los pacientes se quedan: buena señal de satisfacción.');
+  }
+  // Por clínica
+  if (!filtro.clinica) {
+    const cl = clinicasTodas().map(c => [c, metricas(S.patients.filter(p => p.clinica === c), '0000-01-01')]).filter(([, x]) => x.retencionN != null && x.nuevosMaduros >= 5);
+    if (cl.length >= 2) {
+      cl.sort((a, b) => b[1].retencionN - a[1].retencionN);
+      const [best, worst] = [cl[0], cl[cl.length - 1]];
+      if (best[1].retencionN - worst[1].retencionN >= 15)
+        add('idea', `Diferencia entre clínicas: ${esc(best[0])} fideliza más`, `Vuelve tras la 1ª visita el ${r(best[1].retencionN)} % en ${esc(best[0])} frente al ${r(worst[1].retencionN)} % en ${esc(worst[0])}. Revisa qué cambia (tipo de paciente, precio, agenda, seguimiento) para aplicarlo en ambas.`);
+    }
+  }
+  // Cirugía
+  const cir = pac.filter(p => p.cirugia), resto = pac.filter(p => !p.cirugia);
+  if (cir.length >= 5 && resto.length >= 5) {
+    const a = metricas(cir, '0000-01-01'), b = metricas(resto, '0000-01-01');
+    if (a.retencionN != null && b.retencionN != null && b.retencionN - a.retencionN >= 15)
+      add('idea', 'Los pacientes de cirugía abandonan antes', `Vuelve tras la 1ª visita el ${r(a.retencionN)} % frente al ${r(b.retencionN)} % del resto. Un calendario de revisiones fijado desde el principio (por ejemplo, un plan específico de cirugía) ayuda a mantenerlos.`);
+  }
+  // Pagos y envíos
+  if (m.pagoPendiente) add('mejora', `${m.pagoPendiente} paciente${m.pagoPendiente === 1 ? '' : 's'} con pago pendiente o parcial`, 'Revísalos para no acumular cobros atrasados.', '<button data-act="verpagos">Ver lista</button>');
+  if (m.enviosPend) add('mejora', `${m.enviosPend} envío${m.enviosPend === 1 ? '' : 's'} pendiente${m.enviosPend === 1 ? '' : 's'} desde hace más de una semana`, 'Dietas o materiales comprometidos que aún no has enviado: aparecen en la pestaña Hoy.', '<button data-go="hoy">Ir a Hoy</button>');
+  const orden = { alerta: 0, mejora: 1, idea: 2, bien: 3 };
+  return out.sort((a, b) => orden[a.tipo] - orden[b.tipo]);
+}
+function renderEvaluacion(items) {
+  if (!items.length) return '';
+  const ico = { bien: ['✅', 'Va bien'], mejora: ['⚠️', 'A mejorar'], alerta: ['❗', 'Atención'], idea: ['💡', 'Idea'] };
+  return `<div class="card"><b>Evaluación y recomendaciones</b>
+    <div class="hint">Comentarios automáticos a partir de tus datos${filtro.clinica ? ' de esta clínica' : ''}. Se actualizan solos.</div>
+    ${items.map(x => `<div class="eval"><span class="ico" aria-hidden="true">${ico[x.tipo][0]}</span>
+      <div class="tx"><b><span class="hint" style="font-weight:600">${ico[x.tipo][1]} · </span>${x.titulo}</b><p>${x.texto}</p></div>${x.accion || ''}</div>`).join('')}</div>`;
+}
+function graficoBarras(datos, etiqueta, unidad) {
+  const max = Math.max(1, ...datos.map(d => d.v));
+  return `<div class="chart" role="img" aria-label="${esc(etiqueta)}">${datos.map(d => `<div class="col" data-tip="${esc(d.tip)}: ${d.v} ${unidad}">
+      <div class="val">${d.v || ''}</div><div class="cbar" style="height:${d.v / max * 100}%"></div></div>`).join('')}</div>
+    <div class="ejes">${datos.map(d => `<span>${esc(d.eje)}</span>`).join('')}</div>
+    <details class="datos"><summary>Ver datos</summary><table><tbody>${datos.map(d => `<tr><td>${esc(d.tip)}</td><td class="num">${d.v}</td></tr>`).join('')}</tbody></table></details>`;
+}
+function renderEstadisticas() {
+  const t = today();
+  const desde = periodoEst === '12m' ? addMonths(t, -12) : periodoEst === 'ano' ? t.slice(0, 4) + '-01-01' : '0000-01-01';
+  const pac = S.patients.filter(pasaClinica);
+  const m = metricas(pac, desde);
+  const nombrePeriodo = { '12m': 'últimos 12 meses', ano: 'este año', todo: 'desde el principio' }[periodoEst];
+  let h = `<div class="row" style="margin-bottom:16px"><h2 style="margin:0">Estadísticas</h2><span class="spacer"></span>
+    <select id="fPeriodo" style="width:auto">${[['12m', 'Últimos 12 meses'], ['ano', 'Este año'], ['todo', 'Todo el historial']]
+      .map(([v, l]) => `<option value="${v}" ${periodoEst === v ? 'selected' : ''}>${l}</option>`).join('')}</select>${selectorClinica()}</div>`;
+  if (!pac.length) return h + `<div class="card empty">No hay pacientes${filtro.clinica ? ' en esta clínica' : ''} todavía. Las estadísticas aparecerán cuando registres o importes pacientes.</div>`;
+  const kpi = (v, l, d) => `<div class="kpi"><b>${v}</b><span>${l}</span>${d ? `<small>${d}</small>` : ''}</div>`;
+  h += renderEvaluacion(evaluacion(pac, m));
+  h += `<h3>Actividad · ${nombrePeriodo}</h3><div class="kpis">
+    ${kpi(m.visitas, 'visitas realizadas')}
+    ${kpi(m.nuevos, 'pacientes nuevos', 'primera visita en el periodo')}
+    ${kpi(m.asistencia, 'asistencia', `${m.faltas} cita${m.faltas === 1 ? '' : 's'} a las que no acudieron`)}
+    ${kpi(m.visitasPorPaciente, 'visitas por paciente', 'entre los que vinieron en el periodo')}
+    ${m.importe ? kpi(m.importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }), 'importe de planes iniciados', 'según el campo «Importe» de las fichas') : ''}
+  </div>
+  <h3>Fidelización</h3><div class="kpis">
+    ${kpi(m.retencion, 'vuelven tras la 1ª visita', m.nuevosMaduros ? `${m.vuelven} de ${m.nuevosMaduros} nuevos (1ª visita hace más de 2 meses)` : 'aún no hay datos suficientes')}
+    ${kpi(m.duracionMeses + (m.duracionMeses !== '—' ? ' meses' : ''), 'duración media del seguimiento', 'de la 1ª a la última visita')}
+    ${kpi(m.activos, 'pacientes activos', `${m.sinProxima} sin próxima visita apuntada`)}
+    ${m.planCompleto + m.planCurso + m.planParado ? kpi(`${m.planCompleto} · ${m.planCurso} · ${m.planParado}`, 'planes completados · en curso · sin terminar',
+      m.planParado ? `<button class="link" data-act="verpendientes">Ver los ${m.planParado} sin terminar</button>` : '') : ''}
+  </div>`;
+
+  // series mensuales (siempre los últimos 12 meses)
+  const meses = [...Array(12)].map((_, i) => addMonths(t.slice(0, 7) + '-01', i - 11).slice(0, 7));
+  const porMes = f => meses.map(ym => ({ eje: mesCorto(ym), tip: mesLargo(ym), v: f(ym) }));
+  const visMes = porMes(ym => pac.reduce((n, p) => n + p.visitas.filter(v => v.fecha.slice(0, 7) === ym && v.fecha <= t).length, 0));
+  const nueMes = porMes(ym => pac.filter(p => { const f = p.visitas.map(v => v.fecha).sort()[0]; return f && f.slice(0, 7) === ym; }).length);
+  const tramos = [['1', 1, 1], ['2', 2, 2], ['3', 3, 3], ['4', 4, 4], ['5', 5, 5], ['6–9', 6, 9], ['10+', 10, 1e9]];
+  const histo = tramos.map(([e, a, b]) => ({ eje: e, tip: `${e} visita${e === '1' ? '' : 's'}`, v: pac.filter(p => p.visitas.length >= a && p.visitas.length <= b).length }));
+  h += `<div class="twocol">
+    <div class="card"><b>Visitas por mes</b><div class="hint">Últimos 12 meses</div>${graficoBarras(visMes, 'Visitas por mes', 'visitas')}</div>
+    <div class="card"><b>Pacientes nuevos por mes</b><div class="hint">Mes de su primera visita</div>${graficoBarras(nueMes, 'Pacientes nuevos por mes', 'pacientes')}</div>
+  </div>
+  <div class="card"><b>¿Cuántas visitas hace cada paciente?</b><div class="hint">Todo el historial · número de pacientes según su total de visitas. Cuantos más a la derecha, mayor fidelización.</div>
+    ${graficoBarras(histo, 'Pacientes según número de visitas', 'pacientes')}</div>`;
+
+  // comparativa por clínica
+  if (!filtro.clinica) {
+    const grupos = [...clinicasTodas().map(c => [c, S.patients.filter(p => p.clinica === c)]), ['Sin clínica', S.patients.filter(p => !p.clinica)]].filter(([, ps]) => ps.length);
+    if (grupos.length > 1) h += `<div class="card"><b>Comparativa por clínica</b><div class="hint">${nombrePeriodo}</div>
+      <div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Clínica</th><th class="num">Pacientes</th><th class="num">Activos</th><th class="num">Visitas</th>
+        <th class="num">Nuevos</th><th class="num">Asistencia</th><th class="num">Vuelven tras 1ª</th><th class="num">Visitas/paciente</th><th class="num">Planes sin terminar</th></tr></thead><tbody>
+      ${grupos.map(([c, ps]) => { const x = metricas(ps, desde); return `<tr style="cursor:default"><td><b>${esc(c)}</b></td><td class="num">${x.total}</td><td class="num">${x.activos}</td>
+        <td class="num">${x.visitas}</td><td class="num">${x.nuevos}</td><td class="num">${x.asistencia}</td><td class="num">${x.retencion}</td><td class="num">${x.visitasPorPaciente}</td><td class="num">${x.planParado}</td></tr>`; }).join('')}
+      </tbody></table></div></div>`;
+  }
+  // cirugía frente al resto
+  const cir = pac.filter(p => p.cirugia), resto = pac.filter(p => !p.cirugia);
+  if (cir.length && resto.length) {
+    const a = metricas(cir, desde), b = metricas(resto, desde);
+    h += `<div class="card"><b>Pacientes de cirugía frente al resto</b><div class="hint">${nombrePeriodo}</div>
+      <div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th></th><th class="num">Pacientes</th><th class="num">Visitas</th><th class="num">Asistencia</th><th class="num">Vuelven tras 1ª</th><th class="num">Visitas/paciente</th><th class="num">Duración media</th></tr></thead><tbody>
+      ${[['Cirugía', a], ['Sin cirugía', b]].map(([l, x]) => `<tr style="cursor:default"><td><b>${l}</b></td><td class="num">${x.total}</td><td class="num">${x.visitas}</td><td class="num">${x.asistencia}</td>
+        <td class="num">${x.retencion}</td><td class="num">${x.visitasPorPaciente}</td><td class="num">${x.duracionMeses}${x.duracionMeses !== '—' ? ' m' : ''}</td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }
+  return h + `<p class="hint">Las cifras se calculan con los datos de este CRM (incluidos los importados). «Asistencia» = visitas ÷ (visitas + citas a las que no acudió).</p>`;
 }
 
 // Pacientes con cita hoy: registrar en un toque si vino o no
@@ -806,7 +1029,9 @@ function renderAlerta(a, cls) {
 function renderLista() {
   const t = today(), q = filtro.q.toLowerCase();
   const list = S.patients
-    .filter(p => filtro.estado === 'todos' || (filtro.estado === 'activos' ? p.estado !== 'alta' : filtro.estado === 'pendientes' ? p.estado !== 'alta' && visitasPendientes(p) > 0 : p.estado === filtro.estado))
+    .filter(p => filtro.estado === 'todos' || (filtro.estado === 'activos' ? p.estado !== 'alta' : filtro.estado === 'pendientes' ? p.estado !== 'alta' && visitasPendientes(p) > 0
+      : filtro.estado === 'sinprox' ? p.estado === 'activo' && !(p.proximaVisita && p.proximaVisita >= today())
+      : filtro.estado === 'pago' ? p.estado !== 'alta' && p.pago && p.pago !== 'pagado' : p.estado === filtro.estado))
     .filter(pasaClinica)
     .filter(p => !filtro.cirugia || (filtro.cirugia === 'si' ? p.cirugia : !p.cirugia))
     .filter(p => !q || [p.nombre, p.servicio, p.objetivo, p.clinica].join(' ').toLowerCase().includes(q))
@@ -818,7 +1043,7 @@ function renderLista() {
   <div class="row" style="margin-bottom:14px">
     <input id="q" placeholder="Buscar por nombre, objetivo, servicio, clínica…" value="${esc(filtro.q)}" style="flex:1;min-width:200px">
     <select id="fEstado" style="width:auto">
-      ${[['activos', 'Activos y en pausa'], ['activo', 'Solo activos'], ['pendientes', 'Con visitas pendientes del plan'], ['pausado', 'En pausa'], ['alta', 'De alta'], ['todos', 'Todos']]
+      ${[['activos', 'Activos y en pausa'], ['activo', 'Solo activos'], ['pendientes', 'Con visitas pendientes del plan'], ['sinprox', 'Activos sin próxima visita'], ['pago', 'Con pago pendiente'], ['pausado', 'En pausa'], ['alta', 'De alta'], ['todos', 'Todos']]
         .map(([v, l]) => `<option value="${v}" ${filtro.estado === v ? 'selected' : ''}>${l}</option>`).join('')}
     </select>
     <select id="fCirugia" style="width:auto">
@@ -1668,6 +1893,9 @@ document.addEventListener('click', async e => {
     case 'copiar':
       copiar(mensaje(p, el.dataset.tipo), el);
       break;
+    case 'versinprox': filtro.estado = 'sinprox'; view = { tab: 'pacientes' }; render(); scrollTo(0, 0); break;
+    case 'verpagos': filtro.estado = 'pago'; view = { tab: 'pacientes' }; render(); scrollTo(0, 0); break;
+    case 'verpendientes': filtro.estado = 'pendientes'; view = { tab: 'pacientes' }; render(); scrollTo(0, 0); break;
     case 'hoyvino': registrarVisitaHoy(p); vinoHoy[p.id] = true; save(); toast('Visita registrada'); break;
     case 'hoynovino':
       p.anotaciones.push({ id: uid(), fecha: today(), canal: 'ausencia', texto: 'No acudió a la cita' });
@@ -1856,6 +2084,15 @@ function buscarRapido(txt) {
   r.hidden = false;
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target.id === 'qq') cerrarBuscador(); });
+// Tooltip de los gráficos
+document.addEventListener('mousemove', e => {
+  let tip = document.getElementById('tip');
+  const el = e.target.closest('[data-tip]');
+  if (!el) { if (tip) tip.hidden = true; return; }
+  if (!tip) { tip = document.createElement('div'); tip.id = 'tip'; document.body.appendChild(tip); }
+  tip.textContent = el.dataset.tip; tip.hidden = false;
+  tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY - 34) + 'px';
+});
 document.addEventListener('click', e => { if (!e.target.closest('.qs')) document.getElementById('qqres').hidden = true; });
 document.addEventListener('input', e => {
   if (e.target.id === 'qq') { buscarRapido(e.target.value); return; }
@@ -1891,6 +2128,7 @@ document.addEventListener('change', e => {
     }
     return;
   }
+  if (e.target.id === 'fPeriodo') { periodoEst = e.target.value; render(); return; }
   if (e.target.id === 'fCirugia') { filtro.cirugia = e.target.value; render(); return; }
   if (e.target.name === 'clinica' && e.target.closest('#fp') && e.target.value === '__nueva') {
     const n = (prompt('Nombre de la nueva clínica o centro:') || '').trim();
